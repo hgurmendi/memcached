@@ -8,13 +8,14 @@
 
 #define PORT 8000
 
-int main(int argc, char **argv)
+/**
+ * Returns a file descriptor for a socket that listens on the given port.
+ * Modifies the given sockaddr_in structure according to the desired setup.
+ */
+int listen_on_port(short int port, struct sockaddr_in *address, socklen_t address_len)
 {
     int fd_listen;
-    int fd_client;
     int opt = 1;
-    struct sockaddr_in address;
-    int addrlen = sizeof(address);
 
     // Create the socket for a TCP connection
     if ((fd_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -27,24 +28,36 @@ int main(int argc, char **argv)
         perror("Error setting up socket");
         exit(EXIT_FAILURE);
     }
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
 
     // Bind the socket to the port
-    if (bind(fd_listen, (struct sockaddr *) &address, sizeof(address)) != 0) {
+    address->sin_family = AF_INET;
+    address->sin_addr.s_addr = INADDR_ANY;
+    address->sin_port = htons(port);
+    if (bind(fd_listen, (struct sockaddr *) address, address_len) != 0) {
         perror("Error binding socket");
         exit(EXIT_FAILURE);
     }
 
     // Set up the socket for listening incoming connections
     if (listen(fd_listen, 5) != 0) {
-        perror("Error marking the socket for listening");
+        perror("Error preparing the socket for listening connections");
         exit(EXIT_FAILURE);
     }
 
+    return fd_listen;
+}
+
+int main(int argc, char **argv)
+{
+    int fd_listen;
+    int fd_connection;
+    struct sockaddr_in address;
+    socklen_t addrlen = sizeof(address);
+
+    fd_listen = listen_on_port(PORT, &address, addrlen);
+
     // Block until a client connects
-    if ((fd_client = accept(fd_listen, (struct sockaddr *) &address, (socklen_t *) &addrlen )) == -1) {
+    if ((fd_connection = accept(fd_listen, (struct sockaddr *) &address, (socklen_t *) &addrlen )) == -1) {
         perror("Error accepting incoming connection");
         exit(EXIT_FAILURE);
     }
@@ -52,17 +65,16 @@ int main(int argc, char **argv)
     // Read from the socket
     char buffer[1024] = {0};
     ssize_t bytes_read = 0;
-    bytes_read = read(fd_client, buffer, 1024);
-    printf("Read the following: %s\n", buffer);
+    bytes_read = read(fd_connection, buffer, 1024);
+    printf("Read the following: <%s>\n", buffer);
 
-    // Write a response to the client
-    char *response = "Hello from server!\n";
-    send(fd_client, response, strlen(response), 0); // write could be used too
+    // Echo the response to the client
+    send(fd_connection, buffer, strlen(buffer), 0); // write could be used here, too
 
     printf("Message sent\n");
 
     // Close both the client and server socket
-    close(fd_client);
+    close(fd_connection);
     shutdown(fd_listen, SHUT_RDWR);
 
     return EXIT_SUCCESS;
