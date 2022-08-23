@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,70 +13,95 @@
  * Returns a file descriptor for a socket that listens on the given port.
  * Modifies the given sockaddr_in structure according to the desired setup.
  */
-int listen_on_port(short int port, struct sockaddr_in *address, socklen_t address_len)
+int listen_on_port(short int port)
 {
-    int fd_listen;
+    int server_fd;
     int opt = 1;
+    struct sockaddr_in server_address;
 
     // Create the socket for a TCP connection
-    if ((fd_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("Error creating socket");
         exit(EXIT_FAILURE);
     }
 
     // Configure the socket to allow the port to be reused after a crash
-    if (setsockopt(fd_listen, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)) != 0) {
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)) != 0) {
         perror("Error setting up socket");
         exit(EXIT_FAILURE);
     }
 
     // Bind the socket to the port
-    address->sin_family = AF_INET;
-    address->sin_addr.s_addr = INADDR_ANY;
-    address->sin_port = htons(port);
-    if (bind(fd_listen, (struct sockaddr *) address, address_len) != 0) {
+    server_address.sin_family = AF_INET;
+    server_address.sin_addr.s_addr = INADDR_ANY;
+    server_address.sin_port = htons(port);
+    if (bind(server_fd, (struct sockaddr *) &server_address, sizeof(server_address)) != 0) {
         perror("Error binding socket");
         exit(EXIT_FAILURE);
     }
 
     // Set up the socket for listening incoming connections
-    if (listen(fd_listen, 5) != 0) {
+    if (listen(server_fd, 5) != 0) {
         perror("Error preparing the socket for listening connections");
         exit(EXIT_FAILURE);
     }
 
-    return fd_listen;
+    return server_fd;
 }
 
-int main(int argc, char **argv)
+/**
+ * Blocks until a client connects to the given server_fd socket file descriptor.
+ * Prints the IP address of the client and returns the client's socket file descriptor.
+ */
+int accept_connection(int server_fd)
 {
-    int fd_listen;
-    int fd_connection;
-    struct sockaddr_in address;
-    socklen_t addrlen = sizeof(address);
+    int client_fd;
+    struct sockaddr_in client_address;
+    socklen_t client_address_len = sizeof(client_address);
 
-    fd_listen = listen_on_port(PORT, &address, addrlen);
-
-    // Block until a client connects
-    if ((fd_connection = accept(fd_listen, (struct sockaddr *) &address, (socklen_t *) &addrlen )) == -1) {
+    if ((client_fd = accept(server_fd, (struct sockaddr *) &client_address, (socklen_t *) &client_address_len)) == -1) {
         perror("Error accepting incoming connection");
         exit(EXIT_FAILURE);
     }
 
-    // Read from the socket
-    char buffer[1024] = {0};
+    char client_ip_address[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &client_address.sin_addr, client_ip_address, sizeof(client_address));
+    printf("Client connected from ip: %s\n", client_ip_address);
+
+    return client_fd;
+}
+
+/**
+ * Reads from the given client socket file descriptor and responds the read data.
+ */
+void handle_connection(int client_fd)
+{
+    char read_buffer[1024] = {0};
     ssize_t bytes_read = 0;
-    bytes_read = read(fd_connection, buffer, 1024);
-    printf("Read the following: <%s>\n", buffer);
+    bytes_read = read(client_fd, read_buffer, 1024);
+    printf("Read the following from the client: <%s>\n", read_buffer);
 
-    // Echo the response to the client
-    send(fd_connection, buffer, strlen(buffer), 0); // write could be used here, too
+    send(client_fd, read_buffer, strlen(read_buffer), 0); // write could have been used here
 
-    printf("Message sent\n");
+    printf("Message sent!\n");
 
-    // Close both the client and server socket
-    close(fd_connection);
-    shutdown(fd_listen, SHUT_RDWR);
+    close(client_fd);
+}
+
+int main(int argc, char **argv)
+{
+    int server_fd;
+    int client_fd;
+
+    server_fd = listen_on_port(PORT);
+
+    printf("Listening for connections in port %d...\n", PORT);
+
+    client_fd = accept_connection(server_fd);
+
+    handle_connection(client_fd);
+
+    shutdown(server_fd, SHUT_RDWR);
 
     return EXIT_SUCCESS;
 }
