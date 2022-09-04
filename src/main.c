@@ -72,18 +72,23 @@ int accept_connection(int server_fd)
 }
 
 /**
- * Reads from the given client socket file descriptor and responds the read data.
+ * Continuously reads from the given client socket file descriptor and responds the read data.
  */
 void handle_connection(int client_fd)
 {
     char read_buffer[1024] = {0};
     ssize_t bytes_read = 0;
-    bytes_read = read(client_fd, read_buffer, 1024);
-    printf("Read the following from the client: <%s>\n", read_buffer);
 
-    send(client_fd, read_buffer, strlen(read_buffer), 0); // write could have been used here
-
-    printf("Message sent!\n");
+    /**
+     * read returns 0 for EOF (i.e. connection terminated), -1 for errors, and a positive
+     * number when one or more characters were read.
+     */
+    while ((bytes_read = read(client_fd, read_buffer, 1024)) > 0) {
+        read_buffer[bytes_read] = '\0';
+        printf("Read the following from the client: <%s>\n", read_buffer);
+        send(client_fd, read_buffer, strlen(read_buffer), 0); // write could have been used here
+        printf("Message sent!\n");
+    }
 
     close(client_fd);
 }
