@@ -102,9 +102,11 @@ int main(int argc, char **argv)
 
     printf("Listening for connections in port %d...\n", PORT);
 
-    client_fd = accept_connection(server_fd);
+    while (1) {
+        client_fd = accept_connection(server_fd);
 
-    handle_connection(client_fd);
+        handle_connection(client_fd);
+    }
 
     shutdown(server_fd, SHUT_RDWR);
 
