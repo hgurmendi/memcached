@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,7 +79,7 @@ int accept_connection(int server_fd) {
  * Continuously reads from the given client socket file descriptor and responds
  * the read data.
  */
-void handle_connection(int client_fd) {
+void handle_connection(int client_fd, fd_set *current_sockets) {
   char read_buffer[1024] = {0};
   ssize_t bytes_read = 0;
 
@@ -86,29 +87,79 @@ void handle_connection(int client_fd) {
    * read returns 0 for EOF (i.e. connection terminated), -1 for errors, and a
    * positive number when one or more characters were read.
    */
-  while ((bytes_read = read(client_fd, read_buffer, 1024)) > 0) {
-    read_buffer[bytes_read] = '\0';
-    printf("Read the following from the client: <%s>\n", read_buffer);
-    send(client_fd, read_buffer, strlen(read_buffer),
-         0); // write could have been used here
-    printf("Message sent!\n");
+  bytes_read = read(client_fd, read_buffer, 1024);
+
+  if (bytes_read < 0) {
+    perror("Error reading from client");
+    exit(EXIT_FAILURE);
   }
 
-  close(client_fd);
+  if (bytes_read == 0) {
+    // Client closed the connection.
+    printf("Client closed!\n");
+    close(client_fd);
+    FD_CLR(client_fd, current_sockets);
+    return;
+  }
+
+  read_buffer[bytes_read] = '\0';
+  printf("Read the following from the client: <%s>\n", read_buffer);
+  // `write` could have been used here instead of `send`.
+  send(client_fd, read_buffer, strlen(read_buffer), 0);
+  printf("Message sent!\n");
+
+  FD_SET(client_fd, current_sockets);
 }
 
 int main(int argc, char **argv) {
   int server_fd;
-  int client_fd;
+  fd_set current_sockets, ready_sockets;
 
   server_fd = listen_on_port(PORT);
 
   printf("Listening for connections in port %d...\n", PORT);
 
-  while (1) {
-    client_fd = accept_connection(server_fd);
+  /**
+   * Initialize the set of file descriptors to listen for. First clear the set,
+   * then add the server file descriptor to the set.
+   */
+  FD_ZERO(&current_sockets);
+  FD_SET(server_fd, &current_sockets);
 
-    handle_connection(client_fd);
+  while (true) {
+    /* Copy the set struct because calling `select` is destructive.
+     * `ready_sockets` will have all the ready for reading file descriptors
+     * set.
+     */
+    ready_sockets = current_sockets;
+
+    // Wait until any socket in the set is ready for reading.
+    if (select(FD_SETSIZE, &ready_sockets, NULL, NULL, NULL) < 0) {
+      perror("select error");
+      exit(EXIT_FAILURE);
+    }
+
+    // Iterate through all the possible file descriptors (up to `FD_SETZISE`).
+    for (int i = 0; i < FD_SETSIZE; i++) {
+      if (FD_ISSET(i, &ready_sockets)) {
+        if (i == server_fd) {
+          /* When the server file descriptor is ready for reading, accept the
+           * incoming connection and add it to the set of file descriptors to
+           * listen on (but the one that doesn't mutate when calling `select`).
+           */
+          int client_fd = accept_connection(server_fd);
+          FD_SET(client_fd, &current_sockets);
+        } else {
+          /* When a client file descriptor is ready for reading, just handle
+           * the connection by passing the file descriptor to the
+           * `handle_connection` function, which deals with the client and
+           * detects whether the client closed the connection or might have
+           * something else to send.
+           */
+          handle_connection(i, &current_sockets);
+        }
+      }
+    }
   }
 
   shutdown(server_fd, SHUT_RDWR);
