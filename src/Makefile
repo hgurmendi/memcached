@@ -1,7 +1,7 @@
 CC=gcc
 
 memcached: main.o
-	$(CC) -o memcached main.o sockets.o
+	$(CC) -o memcached main.o sockets.o -lpthread
 
 main.o: main.c sockets.o
 	$(CC) -c -o main.o main.c

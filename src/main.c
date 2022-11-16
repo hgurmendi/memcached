@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <netdb.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,28 @@
 #include "sockets.h"
 
 #define MAXEVENTS 64
+
+#define NUM_WORKERS 5
+
+struct worker_args {
+  char name[100];
+};
+
+void *worker_func(void *worker_args) {
+  struct worker_args *args;
+
+  args = (struct worker_args *)worker_args;
+
+  printf("%s: initializing!\n", args->name);
+
+  while (true) {
+    sleep(1);
+    printf("%s: faking some work...\n", args->name);
+  }
+
+  free(worker_args);
+  return 0;
+}
 
 /* Accepts all the incoming connections on the server socket and marks them for
  * monitoring by epoll.
@@ -186,7 +209,32 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
+  for (int i = 0; i < NUM_WORKERS; i++) {
+    printf("Creating thread %d...\n", i);
+
+    // Prepare the arguments for each worker...
+    // free responsability is of the caller
+    struct worker_args *args = malloc(sizeof(struct worker_args));
+    snprintf(args->name, 100, "Worker %d", i);
+
+    // Prepare the thread variables
+    // TODO: maybe store this in an array of pthread_t values?
+    pthread_t thread;
+
+    int ret = pthread_create(&thread, NULL, worker_func, (void *)args);
+    if (ret != 0) {
+      perror("pthread_create");
+      abort();
+    }
+  }
+
+  printf("All workers done creating!\n");
+
+  printf("Creating server socket...\n");
+
   server_fd = create_listen_socket(argv[1]);
+
+  printf("Going to the main loop...\n");
 
   main_server_loop(server_fd);
 
