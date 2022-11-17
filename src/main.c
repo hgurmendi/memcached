@@ -12,79 +12,35 @@
 
 #include "sockets.h"
 
-#define MAXEVENTS 64
+#define MAX_EVENTS 64
+#define MAX_WORKER_EVENTS MAX_EVENTS
 
 #define NUM_WORKERS 5
 
+enum CONNECTION_TYPES { BINARY, TEXT };
+
+// This struct is the argument for the worker thread function.
 struct worker_args {
+  // an identifier for the worker.
   char name[100];
+  // the epoll instance file descriptor for the worker.
+  int epoll_fd;
 };
 
-void *worker_func(void *worker_args) {
-  struct worker_args *args;
-
-  args = (struct worker_args *)worker_args;
-
-  printf("%s: initializing!\n", args->name);
-
-  while (true) {
-    sleep(1);
-    printf("%s: faking some work...\n", args->name);
-  }
-
-  free(worker_args);
-  return 0;
-}
-
-/* Accepts all the incoming connections on the server socket and marks them for
- * monitoring by epoll.
- */
-void accept_incoming_connections(int server_fd, int epoll_fd) {
-  struct sockaddr incoming_addr;
-  socklen_t incoming_addr_len = sizeof incoming_addr;
-  int client_fd;
-  int status;
-  char host_buf[NI_MAXHOST];
-  char port_buf[NI_MAXSERV];
-  struct epoll_event event;
-
-  while (true) {
-    client_fd = accept(server_fd, &incoming_addr, &incoming_addr_len);
-    if (client_fd == -1) {
-      if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-        // We already processed all incoming connections, just return.
-        return;
-      } else {
-        // An error happened, just log it and continue.
-        perror("accept");
-        return;
-      }
-    }
-
-    status = getnameinfo(&incoming_addr, incoming_addr_len, host_buf,
-                         sizeof host_buf, port_buf, sizeof port_buf,
-                         NI_NUMERICHOST | NI_NUMERICSERV);
-
-    if (status == 0) {
-      printf("Accepted connection on descriptor %d "
-             "(host=%s, port=%s)\n",
-             client_fd, host_buf, port_buf);
-    }
-
-    status = make_socket_non_blocking(client_fd);
-    if (status == -1) {
-      abort();
-    }
-
-    event.data.fd = client_fd;
-    event.events = EPOLLIN | EPOLLET;
-    status = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event);
-    if (status == -1) {
-      perror("epoll_ctl");
-      abort();
-    }
-  }
-}
+// This is a struct whose memory should be requested by the dispatcher
+// and it should be assigned to epoll_event.data.ptr (which is a pointer to
+// void) and it allows us to store arbitrary data accessible when the event is
+// triggered in an epoll wait
+struct epoll_event_data {
+  // file descriptor of the client
+  int fd;
+  // connection type of the client
+  enum CONNECTION_TYPES connection_type;
+  // ip of the client
+  char host[NI_MAXHOST];
+  // port of the client (wtf?)
+  char port[NI_MAXSERV];
+};
 
 /* Closes the connection to the client.
  */
@@ -142,9 +98,135 @@ void handle_client(int client_fd) {
   }
 }
 
-/* Main server loop. Accepts incoming connections and serves them accordingly.
+void *worker_func(void *worker_args) {
+  struct worker_args *args;
+
+  args = (struct worker_args *)worker_args;
+
+  printf("Starting worker \"%s\" (epoll %d)\n", args->name, args->epoll_fd);
+
+  // Allocate enough zeroed memory for all the simultaneous events that we'll
+  // be listening to.
+  struct epoll_event *events;
+  events = calloc(MAX_EVENTS, sizeof(struct epoll_event));
+  if (events == NULL) {
+    perror("events calloc");
+    abort();
+  }
+
+  while (true) {
+    // handle all the events in the worker
+    int num_events;
+
+    num_events = epoll_wait(args->epoll_fd, events, MAX_EVENTS, -1);
+    for (int i = 0; i < num_events; i++) {
+      int is_epoll_error = (events[i].events & EPOLLERR) ||
+                           (events[i].events & EPOLLHUP) ||
+                           !(events[i].events & EPOLLIN);
+
+      // Interpret the event data.
+      struct epoll_event_data *event_data =
+          (struct epoll_event_data *)(events[i].data.ptr);
+
+      if (is_epoll_error) {
+        fprintf(stderr, "%s: epoll error\n", args->name);
+
+        close(event_data->fd);
+      } else {
+        // Read data from an arbitrary client socket (i.e. handle incoming
+        // interactions).
+        printf("[%s](%d): handling data from %s:%s\n", args->name,
+               args->epoll_fd, event_data->host, event_data->port);
+
+        handle_client(event_data->fd);
+      }
+    }
+  }
+
+  free(events);
+  free(worker_args);
+
+  return 0;
+}
+
+/* Accepts all the incoming connections on the server socket and marks them for
+ * monitoring by the given epoll instance.
  */
-void main_server_loop(int server_fd) {
+void accept_incoming_connections(int server_fd, int worker_epoll_fds[],
+                                 int *worker_index) {
+  struct sockaddr incoming_addr;
+  socklen_t incoming_addr_len = sizeof(incoming_addr);
+  int client_fd;
+  int status;
+  char host_buf[NI_MAXHOST];
+  char port_buf[NI_MAXSERV];
+  struct epoll_event event;
+
+  while (true) {
+    client_fd = accept(server_fd, &incoming_addr, &incoming_addr_len);
+    if (client_fd == -1) {
+      if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+        // We already processed all incoming connections, just return.
+        return;
+      } else {
+        // An error happened, just log it and continue.
+        perror("accept");
+        return;
+      }
+    }
+
+    status = getnameinfo(&incoming_addr, incoming_addr_len, host_buf,
+                         sizeof host_buf, port_buf, sizeof port_buf,
+                         NI_NUMERICHOST | NI_NUMERICSERV);
+
+    if (status == 0) {
+      printf("Accepted connection on descriptor %d "
+             "(host=%s, port=%s)\n",
+             client_fd, host_buf, port_buf);
+    }
+
+    status = make_socket_non_blocking(client_fd);
+    if (status == -1) {
+      abort();
+    }
+
+    // We used to just store the file descriptor in the data member of the epoll
+    // event:
+    // event.data.fd = client_fd;
+    // But no we just have our own type of event data!!
+    struct epoll_event_data *event_data;
+
+    event_data = malloc(sizeof(struct epoll_event_data));
+    if (event_data == NULL) {
+      perror("malloc event_data");
+      abort();
+    }
+
+    event_data->fd = client_fd;
+    event_data->connection_type = TEXT;
+    strncpy(event_data->host, host_buf, NI_MAXHOST);
+    strncpy(event_data->port, port_buf, NI_MAXSERV);
+    event.data.ptr = (void *)event_data;
+
+    event.events = EPOLLIN | EPOLLET;
+
+    // Scheduling policy (sorta): just round robin through all the available
+    // epoll instances.
+    int next_epoll_fd = worker_epoll_fds[*worker_index];
+    // Update the next worker index.
+    *worker_index = (*worker_index + 1) % NUM_WORKERS;
+    status = epoll_ctl(next_epoll_fd, EPOLL_CTL_ADD, event_data->fd, &event);
+    if (status == -1) {
+      perror("epoll_ctl");
+      abort();
+    }
+  }
+}
+
+/* Main server loop. Accepts incoming connections according to a policy and
+ * dispatches them to a worker's epoll.
+ */
+void main_server_loop(int server_fd, int worker_epoll_fds[]) {
   int epoll_fd;
   int status;
   struct epoll_event event;
@@ -169,12 +251,16 @@ void main_server_loop(int server_fd) {
 
   // Allocate enough zeroed memory for all the simultaneous events that we'll
   // be listening to.
-  events = calloc(MAXEVENTS, sizeof event);
+  events = calloc(MAX_EVENTS, sizeof event);
+
+  // We store the index of the worker that we dispatched the last connection to
+  // in `worker_index`.
+  int worker_index = 0;
 
   while (true) {
     int num_events;
 
-    num_events = epoll_wait(epoll_fd, events, MAXEVENTS, -1);
+    num_events = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
     for (int i = 0; i < num_events; i++) {
       int is_epoll_error = (events[i].events & EPOLLERR) ||
                            (events[i].events & EPOLLHUP) ||
@@ -183,13 +269,11 @@ void main_server_loop(int server_fd) {
       if (is_epoll_error) {
         fprintf(stderr, "epoll error\n");
         close(events[i].data.fd);
-      } else if (server_fd == events[i].data.fd) {
-        // Read data from the server socket (i.e. accept incoming connections).
-        accept_incoming_connections(server_fd, epoll_fd);
       } else {
-        // Read data from an arbitrary client socket (i.e. handle incoming
-        // interactions).
-        handle_client(events[i].data.fd);
+        printf("Accepting client connection\n");
+        // Read data from the server socket (i.e. accept incoming
+        // connections).
+        accept_incoming_connections(server_fd, worker_epoll_fds, &worker_index);
       }
     }
   }
@@ -209,19 +293,31 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
+  // Workers info
+  pthread_t workers[NUM_WORKERS];
+  int worker_epoll_fds[NUM_WORKERS];
+
   for (int i = 0; i < NUM_WORKERS; i++) {
     printf("Creating thread %d...\n", i);
+
+    // Create an epoll instance for the worker.
+    worker_epoll_fds[i] = epoll_create1(0);
+    if (worker_epoll_fds[i] == -1) {
+      perror("epoll_create1");
+      abort();
+    }
 
     // Prepare the arguments for each worker...
     // free responsability is of the caller
     struct worker_args *args = malloc(sizeof(struct worker_args));
+    if (args == NULL) {
+      perror("malloc thread");
+      abort();
+    }
     snprintf(args->name, 100, "Worker %d", i);
+    args->epoll_fd = worker_epoll_fds[i];
 
-    // Prepare the thread variables
-    // TODO: maybe store this in an array of pthread_t values?
-    pthread_t thread;
-
-    int ret = pthread_create(&thread, NULL, worker_func, (void *)args);
+    int ret = pthread_create(&workers[i], NULL, worker_func, (void *)args);
     if (ret != 0) {
       perror("pthread_create");
       abort();
@@ -236,7 +332,7 @@ int main(int argc, char *argv[]) {
 
   printf("Going to the main loop...\n");
 
-  main_server_loop(server_fd);
+  main_server_loop(server_fd, worker_epoll_fds);
 
   close(server_fd);
   return EXIT_SUCCESS;
