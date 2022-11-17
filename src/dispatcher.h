@@ -1,0 +1,31 @@
+#ifndef __DISPATCHER_H__
+#define __DISPATCHER_H__
+
+#include <pthread.h>
+
+struct DispatcherState {
+  // Bound file descriptor used for the server.
+  int server_fd;
+  // Epoll instance file descriptor.
+  int epoll_fd;
+  // Total number of workers.
+  int num_workers;
+  // Array of file descriptors for each epoll instance from worker.
+  int *worker_epoll_fds;
+  // Array of worker thread identifiers.
+  pthread_t *worker_threads;
+  // Next worker index to handle the next connection (used for the Round Robin
+  // schedule policy)
+  int next_worker;
+};
+
+// void dispatcher_loop(struct DispatcherState *dispatcher_state);
+
+void initialize_dispatcher(struct DispatcherState *dispatcher_state,
+                           int num_workers, char *port);
+
+void destroy_dispatcher(struct DispatcherState *dispatcher_state);
+
+void dispatcher_loop(struct DispatcherState *dispatcher_state);
+
+#endif
