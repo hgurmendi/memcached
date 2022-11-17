@@ -176,6 +176,7 @@ void initialize_dispatcher(struct DispatcherState *dispatcher_state,
  * by the workers themselves.
  */
 void destroy_dispatcher(struct DispatcherState *dispatcher_state) {
+  close(dispatcher_state->server_fd);
   free(dispatcher_state->worker_threads);
   free(dispatcher_state->worker_epoll_fds);
   free(dispatcher_state);
