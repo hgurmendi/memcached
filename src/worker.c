@@ -11,17 +11,19 @@
 
 /* Closes the connection to the client.
  */
-static void close_client(int client_fd) {
-  printf("Closed connection on descriptor %d\n", client_fd);
+static void close_client(struct ClientEpollEventData *event_data) {
+  printf("Closing client %s (%d)\n", event_data->host, event_data->fd);
   // Closing the descriptor will make epoll automatically remove it from the
   // set of file descriptors which are currently monitored.
-  close(client_fd);
+  close(event_data->fd);
+  // We also have to free the memory allocated for the event data.
+  free(event_data);
 }
 
 /* Handles incoming data from a client connection. If the client closes the
  * connection, we close the file descriptor and epoll manages it accordingly.
  */
-static void handle_client(int client_fd) {
+static void handle_client(struct ClientEpollEventData *event_data) {
   int status;
   ssize_t count;
   char read_buf[512];
@@ -30,20 +32,20 @@ static void handle_client(int client_fd) {
   // as we're running in edge-triggered mode and won't get a notification again
   // for the same data.
   while (true) {
-    count = read(client_fd, read_buf, sizeof read_buf);
+    count = read(event_data->fd, read_buf, sizeof read_buf);
     if (count == -1) {
       // If an error different than `EAGAIN` happened, log it and close the
       // connection to the client. Otherwise, `EAGAIN` means we've read all the
       // data, so go back to the main loop.
       if (errno != EAGAIN) {
         perror("read");
-        close_client(client_fd);
+        close_client(event_data);
       }
       return;
     } else if (count == 0) {
       // Reading 0 bytes means that the client closed the connection, so we
       // close the connection as well.
-      close_client(client_fd);
+      close_client(event_data);
       return;
     }
 
@@ -56,7 +58,7 @@ static void handle_client(int client_fd) {
     // Echo to the client
     bool should_echo_to_client = true;
     if (should_echo_to_client) {
-      status = write(client_fd, read_buf, count);
+      status = write(event_data->fd, read_buf, count);
       if (status == -1) {
         perror("write echo");
         abort();
@@ -93,13 +95,13 @@ static void *worker_func(void *worker_args) {
 
       if (is_epoll_error(events[i])) {
         fprintf(stderr, "%s: epoll error\n", args->name);
-        close(event_data->fd);
+        close_client(event_data);
       } else {
         // Handle the data incoming from the client.
         printf("[%s](%d): handling data from %s:%s\n", args->name,
                args->epoll_fd, event_data->host, event_data->port);
 
-        handle_client(event_data->fd);
+        handle_client(event_data);
       }
     }
   }
