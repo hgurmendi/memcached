@@ -1,10 +1,27 @@
 CC=gcc
 
-memcached: main.o
-	$(CC) -o memcached main.o
+memcached:
+	gcc -o memcached main.c dispatcher.c worker.c epoll.c sockets.c -lpthread
 
-main.o: main.c
-	$(CC) -c -o main.o main.c
+# TODO: figure out the dependencies later... for now the rule above should work...
+
+# memcached: main.o dispatcher.o worker.o
+# 	$(CC) -o memcached main.o dispatcher.o worker.o -lpthread
+
+# main.o: main.c dispatcher.o worker.o
+# 	$(CC) -c -o main.o main.c
+
+# dispatcher.o: dispatcher.c dispatcher.h worker.o epoll.o sockets.o
+# 	$(CC) -c -o dispatcher.o dispatcher.c
+
+# worker.o: worker.c worker.h epoll.o
+# 	$(cc) -c -o worker.o worker.c
+
+# sockets.o: sockets.c sockets.h
+# 	$(CC) -c -o sockets.o sockets.c
+
+# epoll.o: epoll.c epoll.h
+# 	$(CC) -c -o epoll.o epoll.c
 
 clean:
 	rm *.o memcached

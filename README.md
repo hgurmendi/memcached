@@ -9,3 +9,4 @@ data (strings, objects) from results of database calls, API calls, or page rende
 # References
 
 - Used the following tutorial for `epoll`: https://web.archive.org/web/20120504033548/https://banu.com/blog/2/how-to-use-epoll-a-complete-example-in-c/
+- Used the following tutorial for POSIX threads: https://www.cs.cmu.edu/afs/cs/academic/class/15492-f07/www/pthreads.html
