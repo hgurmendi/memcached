@@ -1,7 +1,7 @@
 CC=gcc
 
 memcached: $(wildcard *.c) $(wildcard *.h)
-	gcc -Wall -o memcached main.c dispatcher.c worker.c epoll.c sockets.c -lpthread
+	gcc -pthread -Wall -o memcached main.c dispatcher.c worker.c epoll.c sockets.c -pthread
 
 # TODO: figure out the dependencies later... for now the rule above should work...
 
