@@ -7,11 +7,7 @@
 #include <unistd.h>
 
 #define MAX_REQUEST_SIZE 2048
-#define MAX_COMMAND_SIZE 10
 
-// Compile regularly with cc test_parse.c
-
-// todo: cambiar el nombre
 enum BINARY_TYPES {
   PUT = 11,
   DEL = 12,
@@ -28,6 +24,7 @@ enum BINARY_TYPES {
 
 struct Command {
   enum BINARY_TYPES type;
+
   uint32_t arg1_size;
   unsigned char *arg1;
 
@@ -35,12 +32,16 @@ struct Command {
   unsigned char *arg2;
 };
 
+/* Frees the memory of the given Command struct.
+ */
 void destroy_command(struct Command *command) {
   free(command->arg1);
   free(command->arg2);
   free(command);
 }
 
+/* Prints the given Command struct to stdout.
+ */
 void print_command(struct Command *command) {
   printf("Command:\n");
   printf("Type: %d\n", command->type);
@@ -48,23 +49,30 @@ void print_command(struct Command *command) {
   printf("Arg2 (size %d): %s\n", command->arg2_size, command->arg2);
 }
 
-void read_argument_from_text_client(char **buf, unsigned char *arg,
+/* Reads an argument from the text client according to the text protocol
+ * specification.
+ * Allocates memory for the buffer where the text argument is going to be stored
+ * and stores it in the `arg` pointer, and stores the size in `arg_size`.
+ */
+void read_argument_from_text_client(char **buf, unsigned char **arg,
                                     uint32_t *arg_size) {
   char *token = strsep(buf, " ");
-  printf("Este es el token papa: <%s>\n", token);
-  size_t argument_size = strlen(token);
-  *arg_size = (uint32_t)argument_size;
-  arg = calloc(*arg_size, sizeof(unsigned char));
-  strncpy((char *)arg, token, *arg_size);
-  printf("Este es el argumento y su dir: <%s> <%p>\n", (char *)arg, arg);
+  *arg_size = (uint32_t)strlen(token);
+  *arg = calloc(*arg_size, sizeof(unsigned char));
+  strncpy((char *)*arg, token, *arg_size);
 }
 
+/* True if the string in token equals to the given command.
+ */
 bool tokenIsCommand(char *token, char *command) {
-  return strncmp(command, token, MAX_COMMAND_SIZE) == 0;
+  return 0 == strncmp(command, token, strlen(command));
 }
 
+/* Parses the data read from a client that connected through the text protocol
+ * port. Returns a Command struct describing the data that was read.
+ * The consumer must free the memory of the Command struct received.
+ */
 struct Command *parse_text(int client_fd) {
-  // TODO: el cliente de esta funcion libera la memoria.
   struct Command *command = calloc(sizeof(struct Command), 1);
 
   // TODO: Figure out why using this kind of buffer definition breaks
@@ -73,62 +81,55 @@ struct Command *parse_text(int client_fd) {
   char *buf = calloc(MAX_REQUEST_SIZE + 1, sizeof(char));
   int bytes_read = read(client_fd, buf, MAX_REQUEST_SIZE + 1);
 
+  // TODO: this might break if we read more characters after the newline
+  // character, for example in a "burst" of data from a client... we might have
+  // to do something different like continuously store in a buffer until a
+  // newline is found and parse once we find a newline...
   if (bytes_read > MAX_REQUEST_SIZE) {
-    printf("Todo mal wacho, la request es muy grande\n");
-    abort();
+    command->type = EINVAL;
+    return command;
   }
 
-  // because we're going to use strchr, we make sure there is a null character
-  // in the string
+  // TODO: this might break if the above happens... we are assuming the reads
+  // are line buffered
   buf[MAX_REQUEST_SIZE] = '\0';
 
   char *newline = strchr(buf, '\n');
-
+  // Return an incorrect parse result if the command doesn't have a newline
+  // character in it
   if (newline == NULL) {
-    printf("Todo mal wacho, la request no tiene un newline\n");
-    abort();
+    command->type = EINVAL;
+    return command;
   }
 
-  // Terminamos el string en el newline, total ya sabemos que está.
+  // We forcefully terminate the buffer at the newline, this might be wrong too,
+  // related to the comments above.
   *newline = '\0';
 
   char *token = NULL;
-
-  printf("Parsing the buffer <%s>\n", buf);
-
   token = strsep(&buf, " ");
 
-  printf("First token: <%s>\n", token);
   if (tokenIsCommand(token, "PUT")) {
     command->type = PUT;
-
-    printf("AAAA\n");
-    read_argument_from_text_client(&buf, command->arg1, &command->arg1_size);
-    read_argument_from_text_client(&buf, command->arg2, &command->arg2_size);
-    printf("A ver: <%s> (%p) <%s> (%p)\n", command->arg1, command->arg1,
-           command->arg2, command->arg2);
+    read_argument_from_text_client(&buf, &command->arg1, &command->arg1_size);
+    read_argument_from_text_client(&buf, &command->arg2, &command->arg2_size);
   } else if (tokenIsCommand(token, "DEL")) {
     command->type = DEL;
-
-    read_argument_from_text_client(&buf, command->arg1, &command->arg1_size);
+    read_argument_from_text_client(&buf, &command->arg1, &command->arg1_size);
     command->arg2 = NULL;
   } else if (tokenIsCommand(token, "GET")) {
     command->type = GET;
-
-    read_argument_from_text_client(&buf, command->arg1, &command->arg1_size);
+    read_argument_from_text_client(&buf, &command->arg1, &command->arg1_size);
     command->arg2 = NULL;
   } else if (tokenIsCommand(token, "TAKE")) {
     command->type = TAKE;
-
-    read_argument_from_text_client(&buf, command->arg1, &command->arg1_size);
+    read_argument_from_text_client(&buf, &command->arg1, &command->arg1_size);
     command->arg2 = NULL;
   } else if (tokenIsCommand(token, "STATS")) {
     command->type = STATS;
-
     command->arg1 = command->arg2 = NULL;
   } else {
     command->type = EINVAL;
-
     command->arg1 = command->arg2 = NULL;
   }
 
@@ -143,39 +144,31 @@ struct Command *parse_text(int client_fd) {
 unsigned char *read_argument_from_binary_client(int client_fd,
                                                 uint32_t *arg_size) {
   uint32_t argument_size;
+  // TODO: error checking on the bytes read?
   int bytes_read = read(client_fd, &argument_size, 4);
   argument_size = ntohl(argument_size);
 
-  printf("El primer argumento mide %d\n", argument_size);
-
   unsigned char *argument = calloc(argument_size, sizeof(unsigned char));
-
+  // TODO: error checking on the bytes read?
   bytes_read = read(client_fd, argument, argument_size);
-  printf("Leimos %d bytes del file.\n", bytes_read);
-
-  printf("El segundo argumento es <%s>\n", argument);
-
   *arg_size = argument_size;
   return argument;
 }
 
+/* Parses the data read from a client that connected through the binary protocol
+ * port. Returns a Command struct describing the data that was read.
+ * The consumer must free the memory of the Command struct received.
+ */
 struct Command *parse_binary(int client_fd) {
-  // on the real version of this function, we have to continuously read from the
-  // client in chunks because the data is arbitrarily large (actually, its size
-  // in bytes has to be represented by a 32bit integer).
-
   struct Command *command = calloc(1, sizeof(struct Command));
 
+  // TODO: error checking on the bytes read?
   int bytes_read = read(client_fd, &command->type, 1);
-  printf("Leimos %d bytes del file.\n", bytes_read);
 
   switch (command->type) {
   case PUT:
-    printf("Es un PUT\n");
-
     command->arg1 =
         read_argument_from_binary_client(client_fd, &command->arg1_size);
-
     command->arg2 =
         read_argument_from_binary_client(client_fd, &command->arg2_size);
 
@@ -183,14 +176,17 @@ struct Command *parse_binary(int client_fd) {
   case DEL:
     command->arg1 =
         read_argument_from_binary_client(client_fd, &command->arg1_size);
+
     break;
   case GET:
     command->arg1 =
         read_argument_from_binary_client(client_fd, &command->arg1_size);
+
     break;
   case TAKE:
     command->arg1 =
         read_argument_from_binary_client(client_fd, &command->arg1_size);
+
     break;
   case STATS:
     break;
