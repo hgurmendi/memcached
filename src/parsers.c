@@ -10,9 +10,21 @@
 /* Frees the memory of the given Command struct.
  */
 void destroy_command(struct Command *command) {
-  free(command->arg1);
-  free(command->arg2);
+  if (command->arg1 != NULL) {
+    free(command->arg1);
+  }
+  if (command->arg2 != NULL) {
+    free(command->arg2);
+  }
   free(command);
+}
+
+/* Initializes the given command to an empty state.
+ */
+void initialize_command(struct Command *command) {
+  command->type = BT_OK;
+  command->arg1 = command->arg2 = NULL;
+  command->arg1_size = command->arg2_size = 0;
 }
 
 /* Prints the given Command struct to stdout.
@@ -28,13 +40,19 @@ void print_command(struct Command *command) {
  * specification.
  * Allocates memory for the buffer where the text argument is going to be stored
  * and stores it in the `arg` pointer, and stores the size in `arg_size`.
+ * Returns true if it was able to successfully read the argument from the
+ * buffer, false otherwise.
  */
-static void read_argument_from_text_client(char **buf, unsigned char **arg,
+static bool read_argument_from_text_client(char **buf, unsigned char **arg,
                                            uint32_t *arg_size) {
+  if (*buf == NULL) {
+    return false;
+  }
   char *token = strsep(buf, " ");
-  *arg_size = (uint32_t)strlen(token);
+  *arg_size = (uint32_t)strnlen(token, MAX_REQUEST_SIZE);
   *arg = calloc(*arg_size, sizeof(unsigned char));
-  strncpy((char *)*arg, token, *arg_size);
+  memcpy(token, (char *)*arg, *arg_size);
+  return true;
 }
 
 /* True if the strings are equal.
@@ -48,12 +66,13 @@ static bool tokenEquals(const char *token, const char *command) {
  * The consumer must free the memory of the Command struct received.
  */
 struct Command *parse_text(int client_fd) {
-  struct Command *command = calloc(sizeof(struct Command), 1);
+  struct Command *command = calloc(1, sizeof(struct Command));
 
   // TODO: Figure out why using this kind of buffer definition breaks
   // everything.
   //   char buf[MAX_REQUEST_SIZE + 1];
   char *buf = calloc(MAX_REQUEST_SIZE + 1, sizeof(char));
+  char *tofree = buf;
   int bytes_read = read(client_fd, buf, MAX_REQUEST_SIZE + 1);
 
   // TODO: this might break if we read more characters after the newline
@@ -61,7 +80,7 @@ struct Command *parse_text(int client_fd) {
   // to do something different like continuously store in a buffer until a
   // newline is found and parse once we find a newline...
   if (bytes_read > MAX_REQUEST_SIZE) {
-    command->type = EINVAL;
+    command->type = BT_EINVAL;
     return command;
   }
 
@@ -73,7 +92,7 @@ struct Command *parse_text(int client_fd) {
   // Return an incorrect parse result if the command doesn't have a newline
   // character in it
   if (newline == NULL) {
-    command->type = EINVAL;
+    command->type = BT_EINVAL;
     return command;
   }
 
@@ -85,30 +104,42 @@ struct Command *parse_text(int client_fd) {
   token = strsep(&buf, " ");
 
   if (tokenEquals(token, "PUT")) {
-    command->type = PUT;
-    read_argument_from_text_client(&buf, &command->arg1, &command->arg1_size);
-    read_argument_from_text_client(&buf, &command->arg2, &command->arg2_size);
+    if (read_argument_from_text_client(&buf, &command->arg1,
+                                       &command->arg1_size) &&
+        read_argument_from_text_client(&buf, &command->arg2,
+                                       &command->arg2_size)) {
+      command->type = BT_PUT;
+    } else {
+      command->type = BT_EINVAL;
+    }
   } else if (tokenEquals(token, "DEL")) {
-    command->type = DEL;
-    read_argument_from_text_client(&buf, &command->arg1, &command->arg1_size);
-    command->arg2 = NULL;
+    if (read_argument_from_text_client(&buf, &command->arg1,
+                                       &command->arg1_size)) {
+      command->type = BT_DEL;
+    } else {
+      command->type = BT_EINVAL;
+    }
   } else if (tokenEquals(token, "GET")) {
-    command->type = GET;
-    read_argument_from_text_client(&buf, &command->arg1, &command->arg1_size);
-    command->arg2 = NULL;
+    if (read_argument_from_text_client(&buf, &command->arg1,
+                                       &command->arg1_size)) {
+      command->type = BT_GET;
+    } else {
+      command->type = BT_EINVAL;
+    }
   } else if (tokenEquals(token, "TAKE")) {
-    command->type = TAKE;
-    read_argument_from_text_client(&buf, &command->arg1, &command->arg1_size);
-    command->arg2 = NULL;
+    if (read_argument_from_text_client(&buf, &command->arg1,
+                                       &command->arg1_size)) {
+      command->type = BT_TAKE;
+    } else {
+      command->type = BT_EINVAL;
+    }
   } else if (tokenEquals(token, "STATS")) {
-    command->type = STATS;
-    command->arg1 = command->arg2 = NULL;
+    command->type = BT_STATS;
   } else {
-    command->type = EINVAL;
-    command->arg1 = command->arg2 = NULL;
+    command->type = BT_EINVAL;
   }
 
-  free(buf);
+  free(tofree);
 
   return command;
 }
@@ -141,29 +172,29 @@ struct Command *parse_binary(int client_fd) {
   int bytes_read = read(client_fd, &command->type, 1);
 
   switch (command->type) {
-  case PUT:
+  case BT_PUT:
     command->arg1 =
         read_argument_from_binary_client(client_fd, &command->arg1_size);
     command->arg2 =
         read_argument_from_binary_client(client_fd, &command->arg2_size);
 
     break;
-  case DEL:
+  case BT_DEL:
     command->arg1 =
         read_argument_from_binary_client(client_fd, &command->arg1_size);
 
     break;
-  case GET:
+  case BT_GET:
     command->arg1 =
         read_argument_from_binary_client(client_fd, &command->arg1_size);
 
     break;
-  case TAKE:
+  case BT_TAKE:
     command->arg1 =
         read_argument_from_binary_client(client_fd, &command->arg1_size);
 
     break;
-  case STATS:
+  case BT_STATS:
     break;
   default:
     break;

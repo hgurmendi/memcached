@@ -6,17 +6,17 @@
 #define MAX_REQUEST_SIZE 2048
 
 enum BINARY_TYPES {
-  PUT = 11,
-  DEL = 12,
-  GET = 13,
-  TAKE = 14,
-  STATS = 21,
-  OK = 101,
-  EINVAL = 111,
-  ENOTFOUND = 112,
-  EBINARY = 113,
-  EBIG = 114,
-  EUNK = 115,
+  BT_PUT = 11,
+  BT_DEL = 12,
+  BT_GET = 13,
+  BT_TAKE = 14,
+  BT_STATS = 21,
+  BT_OK = 101,
+  BT_EINVAL = 111,
+  BT_ENOTFOUND = 112,
+  BT_EBINARY = 113,
+  BT_EBIG = 114,
+  BT_EUNK = 115,
 };
 
 struct Command {
@@ -32,6 +32,10 @@ struct Command {
 /* Frees the memory of the given Command struct.
  */
 void destroy_command(struct Command *command);
+
+/* Initializes the given command to an empty state.
+ */
+void initialize_command(struct Command *command);
 
 /* Prints the given Command struct to stdout.
  */
