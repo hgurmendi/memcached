@@ -3,10 +3,12 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/epoll.h>
 #include <unistd.h>
 
 #include "epoll.h"
+#include "parsers.h"
 #include "worker.h"
 
 /* Closes the connection to the client.
@@ -20,51 +22,116 @@ static void close_client(struct ClientEpollEventData *event_data) {
   free(event_data);
 }
 
+/* Responds to a client in the text protocol. The response is encoded in a
+ * Command structure, where the command's type is the first token of the text
+ * response and any possible arguments are stored in the `arg` member.
+ * Returns -1 if there was an error or 0 if it's all right.
+ */
+static int respond_text_to_client(struct ClientEpollEventData *event_data,
+                                  struct Command *command) {
+  int status;
+  char write_buf[1000];
+  int bytes_written = 0;
+
+  switch (command->type) {
+  case BT_EINVAL:
+    bytes_written = snprintf(write_buf, 1000, "EINVAL\n");
+    break;
+  case BT_OK:
+    // Write the first argument of the command as the "argument" of the OK
+    // response.
+    if (command->arg1 != NULL) {
+      bytes_written = snprintf(write_buf, 1000, "OK %s\n", command->arg1);
+    } else {
+      bytes_written = snprintf(write_buf, 1000, "OK\n");
+    }
+    break;
+  case BT_ENOTFOUND:
+    bytes_written = snprintf(write_buf, 1000, "ENOTFOUND\n");
+    break;
+  default:
+    printf("Encountered unknown command type whem sending data to client...\n");
+    return -1;
+    break;
+  }
+
+  status = send(event_data->fd, write_buf, bytes_written, 0);
+  if (status < 0) {
+    printf("Error sending data to client...\n");
+    return -1;
+  }
+
+  return 0;
+}
+
 /* Handles incoming data from a client connection. If the client closes the
  * connection, we close the file descriptor and epoll manages it accordingly.
  */
 static void handle_client(struct ClientEpollEventData *event_data) {
-  int status;
-  ssize_t count;
-  char read_buf[512];
+  struct Command *received_command = NULL;
+  struct Command *response_command = calloc(1, sizeof(struct Command));
 
-  // We use a loop because we must read whatever data is available completely,
-  // as we're running in edge-triggered mode and won't get a notification again
-  // for the same data.
-  while (true) {
-    count = read(event_data->fd, read_buf, sizeof read_buf);
-    if (count == -1) {
-      // If an error different than `EAGAIN` happened, log it and close the
-      // connection to the client. Otherwise, `EAGAIN` means we've read all the
-      // data, so go back to the main loop.
-      if (errno != EAGAIN) {
-        perror("read");
-        close_client(event_data);
-      }
-      return;
-    } else if (count == 0) {
-      // Reading 0 bytes means that the client closed the connection, so we
-      // close the connection as well.
-      close_client(event_data);
-      return;
-    }
+  initialize_command(response_command);
 
-    status = write(STDOUT_FILENO, read_buf, count);
-    if (status == -1) {
-      perror("write");
-      abort();
-    }
-
-    // Echo to the client
-    bool should_echo_to_client = true;
-    if (should_echo_to_client) {
-      status = write(event_data->fd, read_buf, count);
-      if (status == -1) {
-        perror("write echo");
-        abort();
-      }
-    }
+  if (event_data->connection_type == TEXT) {
+    printf("Handling text data\n");
+    received_command = parse_text(event_data->fd);
+  } else {
+    printf("Handling binary data\n");
+    received_command = parse_binary(event_data->fd);
   }
+
+  printf("Received command:\n");
+  print_command(received_command);
+
+  switch (received_command->type) {
+  case BT_PUT:
+    response_command->type = BT_OK;
+    break;
+  case BT_DEL:
+    response_command->type = BT_ENOTFOUND;
+    break;
+  case BT_GET:
+    response_command->type = BT_OK;
+    response_command->arg1 =
+        (unsigned char *)strdup("This_is_the_returned_value");
+    response_command->arg1_size = sizeof("This_is_the_returned_value");
+    break;
+  case BT_TAKE:
+    response_command->type = BT_OK;
+    response_command->arg1 =
+        (unsigned char *)strdup("This_is_the_returned_value");
+    response_command->arg1_size = sizeof("This_is_the_returned_value");
+    break;
+  case BT_STATS:
+    response_command->type = BT_OK;
+    response_command->arg1 = (unsigned char *)strdup(
+        "PUTS=111 DELS=99 GETS=381323 TAKES=1234 STATS=123 KEYS=132");
+    response_command->arg1_size =
+        sizeof("PUTS=111 DELS=99 GETS=381323 TAKES=1234 STATS=123 KEYS=132");
+    break;
+  case BT_EINVAL:
+    response_command->type = BT_EINVAL;
+    break;
+  default:
+    printf("Encountered unknown command type when analyzing the client's "
+           "command.\n");
+    response_command->type = BT_EINVAL;
+    break;
+  }
+
+  if (event_data->connection_type == TEXT) {
+    printf("Responding text data\n");
+    respond_text_to_client(event_data, response_command);
+  } else {
+    printf("Responding binary data\n");
+    unsigned char buf[1];
+    buf[0] = (unsigned char)BT_OK;
+    send(event_data->fd, buf, 1, 0);
+  }
+
+  destroy_command(response_command);
+  destroy_command(received_command);
 }
 
 static void *worker_func(void *worker_args) {
