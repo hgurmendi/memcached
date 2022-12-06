@@ -98,8 +98,10 @@ static void *worker_func(void *worker_args) {
         close_client(event_data);
       } else {
         // Handle the data incoming from the client.
-        printf("[%s](%d): handling data from %s:%s\n", args->name,
-               args->epoll_fd, event_data->host, event_data->port);
+        printf("[%s](%d): handling data from %s:%s (%s)\n", args->name,
+               args->epoll_fd, event_data->host, event_data->port,
+               event_data->connection_type == TEXT ? "Text connection"
+                                                   : "Binary connection");
 
         handle_client(event_data);
       }

@@ -4,8 +4,10 @@
 #include <pthread.h>
 
 struct DispatcherState {
-  // Bound file descriptor used for the server.
-  int server_fd;
+  // Bound file descriptor used for the text protocol.
+  int text_fd;
+  // Bound file descriptor used for the binary protocol.
+  int binary_fd;
   // Epoll instance file descriptor.
   int epoll_fd;
   // Total number of workers.
@@ -22,7 +24,7 @@ struct DispatcherState {
 // void dispatcher_loop(struct DispatcherState *dispatcher_state);
 
 void initialize_dispatcher(struct DispatcherState *dispatcher_state,
-                           int num_workers, char *port);
+                           int num_workers, char *text_port, char *binary_port);
 
 void destroy_dispatcher(struct DispatcherState *dispatcher_state);
 
