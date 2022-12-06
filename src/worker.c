@@ -22,26 +22,72 @@ static void close_client(struct ClientEpollEventData *event_data) {
   free(event_data);
 }
 
-/* Responds to a client in the text protocol. The response is encoded in a
- * Command structure, where the command's type is the first token of the text
- * response and any possible arguments are stored in the `arg` member.
- * Returns -1 if there was an error or 0 if it's all right.
+/* Responds to a client interacting through the binary protocol. The response is
+ * encoded in a Command structure, where the command's type is the first token
+ * of the text response and any (optional) arguments are stored in the `arg1`
+ * member. Returns -1 if there was an error or 0 if it's all right.
+ *
+ */
+static int respond_binary_to_client(struct ClientEpollEventData *event_data,
+                                    struct Command *response_command) {
+  unsigned char response_code;
+
+  // @TODO: error handling of the sends?
+
+  switch (response_command->type) {
+  case BT_EINVAL:
+    response_code = BT_EINVAL;
+    send(event_data->fd, &response_code, 1, 0);
+    break;
+  case BT_OK:
+    // Write the first argument of the command as the "argument" of the OK
+    // response.
+    response_code = BT_OK;
+    send(event_data->fd, &response_code, 1, 0);
+    if (response_command->arg1 != NULL) {
+      uint32_t marshalled_size = htonl(response_command->arg1_size);
+      send(event_data->fd, &marshalled_size, sizeof(uint32_t), 0);
+      send(event_data->fd, response_command->arg1, response_command->arg1_size,
+           0);
+    }
+    break;
+  case BT_ENOTFOUND:
+    response_code = BT_ENOTFOUND;
+    send(event_data->fd, &response_code, 1, 0);
+    break;
+  default:
+    printf("Encountered unknown command type whem sending data to client...\n");
+    return -1;
+    break;
+  }
+
+  return 0;
+}
+
+/* Responds to a client interacting through the text protocol. The response is
+ * encoded in a Command structure, where the command's type is the first token
+ * of the text response and any (optional) arguments are stored in the `arg1`
+ * member. Returns -1 if there was an error or 0 if it's all right.
  */
 static int respond_text_to_client(struct ClientEpollEventData *event_data,
-                                  struct Command *command) {
+                                  struct Command *response_command) {
   int status;
   char write_buf[1000];
   int bytes_written = 0;
 
-  switch (command->type) {
+  // @TODO: Here we might have to return EBINARY when the argument is binary
+  // (might have to encode that in the structure, or as an extra argument).
+
+  switch (response_command->type) {
   case BT_EINVAL:
     bytes_written = snprintf(write_buf, 1000, "EINVAL\n");
     break;
   case BT_OK:
     // Write the first argument of the command as the "argument" of the OK
     // response.
-    if (command->arg1 != NULL) {
-      bytes_written = snprintf(write_buf, 1000, "OK %s\n", command->arg1);
+    if (response_command->arg1 != NULL) {
+      bytes_written =
+          snprintf(write_buf, 1000, "OK %s\n", response_command->arg1);
     } else {
       bytes_written = snprintf(write_buf, 1000, "OK\n");
     }
@@ -86,24 +132,40 @@ static void handle_client(struct ClientEpollEventData *event_data) {
 
   switch (received_command->type) {
   case BT_PUT:
+    // Add the key-value pair to the cache and return OK.
     response_command->type = BT_OK;
     break;
   case BT_DEL:
+    // Remove the key-value pair corresponding to the key if it exists and
+    // return OK, otherwise return ENOTFOUND.
     response_command->type = BT_ENOTFOUND;
     break;
   case BT_GET:
+    // Return the value corresponding to they key if it exists and return OK
+    // along with the value, otherwise return ENOTFOUND.
+    // @TODO: Here we might want to also signal that the value was stored using
+    // the binary protocol because in that case we have to actually send EBINARY
+    // in the text protocol.
     response_command->type = BT_OK;
     response_command->arg1 =
         (unsigned char *)strdup("This_is_the_returned_value");
     response_command->arg1_size = sizeof("This_is_the_returned_value");
     break;
   case BT_TAKE:
+    // Remove the key-value pair corresponding to the key if it exists and
+    // return OK along with the value, otherwise return ENOTFOUND.
+    // @TODO: Here we might want to also signal that the value was stored using
+    // the binary protocol because in that case we have to actually send EBINARY
+    // in the text protocol.
     response_command->type = BT_OK;
     response_command->arg1 =
         (unsigned char *)strdup("This_is_the_returned_value");
     response_command->arg1_size = sizeof("This_is_the_returned_value");
     break;
   case BT_STATS:
+    // Return OK along with various statistics about the usage of the cache,
+    // namely: number of PUTs, number of DELs, number of GETs, number of TAKEs,
+    // number of STATSs, number of KEYs (i.e. key-value pairs) stored.
     response_command->type = BT_OK;
     response_command->arg1 = (unsigned char *)strdup(
         "PUTS=111 DELS=99 GETS=381323 TAKES=1234 STATS=123 KEYS=132");
@@ -111,6 +173,7 @@ static void handle_client(struct ClientEpollEventData *event_data) {
         sizeof("PUTS=111 DELS=99 GETS=381323 TAKES=1234 STATS=123 KEYS=132");
     break;
   case BT_EINVAL:
+    // Error parsing the request, just return EINVAL.
     response_command->type = BT_EINVAL;
     break;
   default:
@@ -125,9 +188,7 @@ static void handle_client(struct ClientEpollEventData *event_data) {
     respond_text_to_client(event_data, response_command);
   } else {
     printf("Responding binary data\n");
-    unsigned char buf[1];
-    buf[0] = (unsigned char)BT_OK;
-    send(event_data->fd, buf, 1, 0);
+    respond_binary_to_client(event_data, response_command);
   }
 
   destroy_command(response_command);
