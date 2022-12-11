@@ -1,5 +1,5 @@
-#ifndef __TEXT_PARSER_H__
-#define __TEXT_PARSER_H__
+#ifndef __PROTOCOL_TEXT_H__
+#define __PROTOCOL_TEXT_H__
 
 #include "command.h"
 

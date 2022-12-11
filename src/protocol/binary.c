@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 
-#include "binary_parser.h"
+#include "binary.h"
 
 /* Reads an argument from the binary client according to the text protocol
  * specification.

@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 
 #include "command.h"
-#include "text_parser.h"
+#include "text.h"
 
 /* Reads an argument from the text client according to the text protocol
  * specification.

@@ -8,11 +8,11 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
-#include "binary_parser.h"
-#include "command.h"
 #include "epoll.h"
 #include "hashtable/hashtable.h"
-#include "text_parser.h"
+#include "protocol/binary.h"
+#include "protocol/command.h"
+#include "protocol/text.h"
 #include "worker.h"
 
 /* Closes the connection to the client.

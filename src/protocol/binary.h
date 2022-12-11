@@ -1,5 +1,5 @@
-#ifndef __BINARY_PARSER_H__
-#define __BINARY_PARSER_H__
+#ifndef __PROTOCOL_BINARY_H__
+#define __PROTOCOL_BINARY_H__
 
 #include "command.h"
 
