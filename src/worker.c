@@ -10,6 +10,7 @@
 #include "binary_parser.h"
 #include "command.h"
 #include "epoll.h"
+#include "hashtable/hashtable.h"
 #include "text_parser.h"
 #include "worker.h"
 
@@ -235,7 +236,7 @@ static void *worker_func(void *worker_args) {
 }
 
 void initialize_workers(int num_workers, pthread_t *worker_threads,
-                        int *worker_epoll_fds) {
+                        int *worker_epoll_fds, struct HashTable *hashtable) {
   for (int i = 0; i < num_workers; i++) {
     printf("Creating worker %d...\n", i);
 
@@ -255,6 +256,7 @@ void initialize_workers(int num_workers, pthread_t *worker_threads,
     }
     snprintf(worker_args->name, sizeof(worker_args->name), "Worker %d", i);
     worker_args->epoll_fd = worker_epoll_fds[i];
+    worker_args->hashtable = hashtable;
 
     int ret = pthread_create(&worker_threads[i], NULL, worker_func,
                              (void *)worker_args);

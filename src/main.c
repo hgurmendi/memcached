@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #include "dispatcher.h"
-#include "worker.h"
+#include "parameters.h"
 
 int main(int argc, char *argv[]) {
   char *text_port = NULL, *binary_port = NULL;
@@ -22,11 +22,11 @@ int main(int argc, char *argv[]) {
     abort();
   }
 
-  initialize_dispatcher(dispatcher_state, NUM_WORKERS, text_port, binary_port);
+  dispatcher_initialize(dispatcher_state, NUM_WORKERS, text_port, binary_port);
 
   dispatcher_loop(dispatcher_state);
 
-  destroy_dispatcher(dispatcher_state);
+  dispatcher_destroy(dispatcher_state);
 
   return EXIT_SUCCESS;
 }
