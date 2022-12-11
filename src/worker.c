@@ -7,9 +7,10 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include "binary_parser.h"
 #include "command.h"
 #include "epoll.h"
-#include "parsers.h"
+#include "text_parser.h"
 #include "worker.h"
 
 /* Closes the connection to the client.
