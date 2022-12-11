@@ -35,34 +35,36 @@ static void close_client(struct ClientEpollEventData *event_data) {
 static int respond_binary_to_client(struct ClientEpollEventData *event_data,
                                     struct Command *response_command) {
   char response_code;
+  int status;
 
-  // @TODO: error handling of the sends?
-
-  switch (response_command->type) {
-  case BT_EINVAL:
-    response_code = BT_EINVAL;
-    send(event_data->fd, &response_code, 1, 0);
-    break;
-  case BT_OK:
-    // Write the first argument of the command as the "argument" of the OK
-    // response.
-    response_code = BT_OK;
-    send(event_data->fd, &response_code, 1, 0);
-    if (response_command->arg1 != NULL) {
-      uint32_t marshalled_size = htonl(response_command->arg1_size);
-      send(event_data->fd, &marshalled_size, sizeof(uint32_t), 0);
-      send(event_data->fd, response_command->arg1, response_command->arg1_size,
-           0);
-    }
-    break;
-  case BT_ENOTFOUND:
-    response_code = BT_ENOTFOUND;
-    send(event_data->fd, &response_code, 1, 0);
-    break;
-  default:
-    printf("Encountered unknown command type whem sending data to client...\n");
+  // These are the only valid options for the binary client.
+  if (response_command->type != BT_EINVAL || response_command->type != BT_OK ||
+      response_command->type != BT_ENOTFOUND) {
     return -1;
-    break;
+  }
+
+  status = send(event_data->fd, &response_code, 1, 0);
+  if (status < 0) {
+    perror("Error sending data to binary client");
+    return -1;
+  }
+
+  if (response_command->arg1 == NULL) {
+    return 0;
+  }
+
+  uint32_t marshalled_size = htonl(response_command->arg1_size);
+  status = send(event_data->fd, &marshalled_size, sizeof(uint32_t), 0);
+  if (status < 0) {
+    perror("Error sending data to binary client");
+    return -1;
+  }
+
+  status = send(event_data->fd, response_command->arg1,
+                response_command->arg1_size, 0);
+  if (status < 0) {
+    perror("Error sending data to binary client");
+    return -1;
   }
 
   return 0;
@@ -79,10 +81,10 @@ static int respond_text_to_client(struct ClientEpollEventData *event_data,
   char write_buf[MAX_REQUEST_SIZE];
   int bytes_written = 0;
 
-  // @TODO: Here we might have to return EBINARY when the argument is binary
-  // (might have to encode that in the structure, or as an extra argument).
-
   switch (response_command->type) {
+  case BT_EBINARY:
+    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "EBINARY\n");
+    break;
   case BT_EINVAL:
     bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "EINVAL\n");
     break;
@@ -198,7 +200,14 @@ static void handle_client(struct ClientEpollEventData *event_data,
       assert(response_command.arg1_size == 0);
       assert(response_command.arg1 == NULL);
     } else {
-      response_command.type = BT_OK;
+      // Check if the value is valid for a text client.
+      if (event_data->connection_type == TEXT &&
+          !is_text_representable(response_command.arg1_size,
+                                 response_command.arg1)) {
+        response_command.type = BT_EBINARY;
+      } else {
+        response_command.type = BT_OK;
+      }
       // arg1_size and arg1 already contain the value size and value for the
       // corresponding key. It should be freed after being sent to the client.
     }
@@ -220,7 +229,14 @@ static void handle_client(struct ClientEpollEventData *event_data,
       assert(response_command.arg1_size == 0);
       assert(response_command.arg1 == NULL);
     } else {
-      response_command.type = BT_OK;
+      // Check if the value is valid for a text client.
+      if (event_data->connection_type == TEXT &&
+          !is_text_representable(response_command.arg1_size,
+                                 response_command.arg1)) {
+        response_command.type = BT_EBINARY;
+      } else {
+        response_command.type = BT_OK;
+      }
       // arg1_size and arg1 already contain the value size and value for the
       // corresponding key. It should be freed after being sent to the client.
     }

@@ -12,4 +12,8 @@
  */
 void parse_text(int client_fd, struct Command *command);
 
+/* true if the given char array is representable as text, false otherwise.
+ */
+bool is_text_representable(uint32_t size, char *arr);
+
 #endif

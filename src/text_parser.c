@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -131,4 +132,16 @@ void parse_text(int client_fd, struct Command *command) {
   }
 
   free(tofree);
+}
+
+/* true if the given char array is representable as text, false otherwise.
+ */
+bool is_text_representable(uint32_t size, char *arr) {
+  for (int i = 0; i < size - 1; i++) {
+    if (!isprint(arr[i])) {
+      return false;
+    }
+  }
+
+  return arr[size - 1] == '\0';
 }
