@@ -197,20 +197,10 @@ static void handle_client(struct ClientEpollEventData *event_data) {
 }
 
 static void *worker_func(void *worker_args) {
-  struct WorkerArgs *args;
-
-  args = (struct WorkerArgs *)worker_args;
+  struct WorkerArgs *args = (struct WorkerArgs *)worker_args;
+  struct epoll_event events[MAX_EVENTS];
 
   printf("Starting worker \"%s\" (epoll %d)\n", args->name, args->epoll_fd);
-
-  // Allocate enough zeroed memory for all the simultaneous events that we'll
-  // be listening to.
-  struct epoll_event *events;
-  events = calloc(MAX_EVENTS, sizeof(struct epoll_event));
-  if (events == NULL) {
-    perror("events calloc");
-    abort();
-  }
 
   // Continuously poll for events that should be handled by the worker.
   while (true) {
@@ -237,10 +227,9 @@ static void *worker_func(void *worker_args) {
     }
   }
 
-  free(events);
   free(worker_args);
 
-  return 0;
+  return NULL;
 }
 
 void initialize_workers(int num_workers, pthread_t *worker_threads,

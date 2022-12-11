@@ -90,14 +90,7 @@ accept_incoming_connections(struct DispatcherState *dispatcher_state,
  * dispatches them to a worker's epoll.
  */
 void dispatcher_loop(struct DispatcherState *dispatcher_state) {
-  struct epoll_event *events;
-  // Allocate enough zeroed memory for all the simultaneous events that we'll
-  // be listening to.
-  events = calloc(MAX_EVENTS, sizeof(struct epoll_event));
-  if (events == NULL) {
-    perror("calloc events");
-    abort();
-  }
+  struct epoll_event events[MAX_EVENTS];
 
   while (true) {
     int num_events;
@@ -117,8 +110,6 @@ void dispatcher_loop(struct DispatcherState *dispatcher_state) {
       }
     }
   }
-
-  free(events);
 }
 
 /* Initializes the epoll instance for the dispatcher, the one that listens for
