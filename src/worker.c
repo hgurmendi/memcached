@@ -72,7 +72,7 @@ static int respond_binary_to_client(struct ClientEpollEventData *event_data,
 static int respond_text_to_client(struct ClientEpollEventData *event_data,
                                   struct Command *response_command) {
   int status;
-  char write_buf[1000];
+  char write_buf[MAX_REQUEST_SIZE];
   int bytes_written = 0;
 
   // @TODO: Here we might have to return EBINARY when the argument is binary
@@ -80,20 +80,20 @@ static int respond_text_to_client(struct ClientEpollEventData *event_data,
 
   switch (response_command->type) {
   case BT_EINVAL:
-    bytes_written = snprintf(write_buf, 1000, "EINVAL\n");
+    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "EINVAL\n");
     break;
   case BT_OK:
     // Write the first argument of the command as the "argument" of the OK
     // response.
     if (response_command->arg1 != NULL) {
-      bytes_written =
-          snprintf(write_buf, 1000, "OK %s\n", response_command->arg1);
+      bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "OK %s\n",
+                               response_command->arg1);
     } else {
-      bytes_written = snprintf(write_buf, 1000, "OK\n");
+      bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "OK\n");
     }
     break;
   case BT_ENOTFOUND:
-    bytes_written = snprintf(write_buf, 1000, "ENOTFOUND\n");
+    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "ENOTFOUND\n");
     break;
   default:
     printf("Encountered unknown command type whem sending data to client...\n");
@@ -103,7 +103,7 @@ static int respond_text_to_client(struct ClientEpollEventData *event_data,
 
   status = send(event_data->fd, write_buf, bytes_written, 0);
   if (status < 0) {
-    printf("Error sending data to client...\n");
+    perror("Error sending data to text client");
     return -1;
   }
 
@@ -114,31 +114,32 @@ static int respond_text_to_client(struct ClientEpollEventData *event_data,
  * connection, we close the file descriptor and epoll manages it accordingly.
  */
 static void handle_client(struct ClientEpollEventData *event_data) {
-  struct Command *received_command = NULL;
-  struct Command *response_command = calloc(1, sizeof(struct Command));
+  struct Command received_command;
+  struct Command response_command;
 
-  initialize_command(response_command);
+  initialize_command(&received_command);
+  initialize_command(&response_command);
 
   if (event_data->connection_type == TEXT) {
     printf("Handling text data\n");
-    received_command = parse_text(event_data->fd);
+    parse_text(event_data->fd, &received_command);
   } else {
     printf("Handling binary data\n");
-    received_command = parse_binary(event_data->fd);
+    parse_binary(event_data->fd, &received_command);
   }
 
   printf("Received command:\n");
-  print_command(received_command);
+  print_command(&received_command);
 
-  switch (received_command->type) {
+  switch (received_command.type) {
   case BT_PUT:
     // Add the key-value pair to the cache and return OK.
-    response_command->type = BT_OK;
+    response_command.type = BT_OK;
     break;
   case BT_DEL:
     // Remove the key-value pair corresponding to the key if it exists and
     // return OK, otherwise return ENOTFOUND.
-    response_command->type = BT_ENOTFOUND;
+    response_command.type = BT_ENOTFOUND;
     break;
   case BT_GET:
     // Return the value corresponding to they key if it exists and return OK
@@ -146,9 +147,9 @@ static void handle_client(struct ClientEpollEventData *event_data) {
     // @TODO: Here we might want to also signal that the value was stored using
     // the binary protocol because in that case we have to actually send EBINARY
     // in the text protocol.
-    response_command->type = BT_OK;
-    response_command->arg1 = strdup("This_is_the_returned_value");
-    response_command->arg1_size = sizeof("This_is_the_returned_value");
+    response_command.type = BT_OK;
+    response_command.arg1 = strdup("This_is_the_returned_value");
+    response_command.arg1_size = sizeof("This_is_the_returned_value");
     break;
   case BT_TAKE:
     // Remove the key-value pair corresponding to the key if it exists and
@@ -156,41 +157,43 @@ static void handle_client(struct ClientEpollEventData *event_data) {
     // @TODO: Here we might want to also signal that the value was stored using
     // the binary protocol because in that case we have to actually send EBINARY
     // in the text protocol.
-    response_command->type = BT_OK;
-    response_command->arg1 = strdup("This_is_the_returned_value");
-    response_command->arg1_size = sizeof("This_is_the_returned_value");
+    response_command.type = BT_OK;
+    response_command.arg1 = strdup("This_is_the_returned_value");
+    response_command.arg1_size = sizeof("This_is_the_returned_value");
     break;
   case BT_STATS:
     // Return OK along with various statistics about the usage of the cache,
     // namely: number of PUTs, number of DELs, number of GETs, number of TAKEs,
     // number of STATSs, number of KEYs (i.e. key-value pairs) stored.
-    response_command->type = BT_OK;
-    response_command->arg1 =
+    response_command.type = BT_OK;
+    response_command.arg1 =
         strdup("PUTS=111 DELS=99 GETS=381323 TAKES=1234 STATS=123 KEYS=132");
-    response_command->arg1_size =
+    response_command.arg1_size =
         sizeof("PUTS=111 DELS=99 GETS=381323 TAKES=1234 STATS=123 KEYS=132");
     break;
   case BT_EINVAL:
     // Error parsing the request, just return EINVAL.
-    response_command->type = BT_EINVAL;
+    response_command.type = BT_EINVAL;
     break;
   default:
     printf("Encountered unknown command type when analyzing the client's "
            "command.\n");
-    response_command->type = BT_EINVAL;
+    response_command.type = BT_EINVAL;
     break;
   }
 
   if (event_data->connection_type == TEXT) {
     printf("Responding text data\n");
-    respond_text_to_client(event_data, response_command);
+    respond_text_to_client(event_data, &response_command);
   } else {
     printf("Responding binary data\n");
-    respond_binary_to_client(event_data, response_command);
+    respond_binary_to_client(event_data, &response_command);
   }
 
-  destroy_command(response_command);
-  destroy_command(received_command);
+  destroy_command_args(&response_command);
+  // TODO: we might not want to free the memory of the received command since
+  // we'll use the already allocated memory for storing the key and/or values.
+  destroy_command_args(&received_command);
 }
 
 static void *worker_func(void *worker_args) {

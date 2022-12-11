@@ -7,6 +7,8 @@
 
 #include "parsers.h"
 
+/* Returns a string representing the binary type.
+ */
 char *binary_type_str(int binary_type) {
   switch (binary_type) {
   case BT_PUT:
@@ -36,7 +38,9 @@ char *binary_type_str(int binary_type) {
   }
 }
 
-static void destroy_command_args(struct Command *command) {
+/* Frees the memory of the arguments of the Command struct.
+ */
+void destroy_command_args(struct Command *command) {
   if (command->arg1 != NULL) {
     free(command->arg1);
     command->arg1 = NULL;
@@ -49,7 +53,7 @@ static void destroy_command_args(struct Command *command) {
   }
 }
 
-/* Frees the memory of the given Command struct.
+/* Frees the memory of the given Command struct and its arguments.
  */
 void destroy_command(struct Command *command) {
   destroy_command_args(command);
@@ -113,12 +117,11 @@ static bool tokenEquals(const char *token, const char *command) {
 }
 
 /* Parses the data read from a client that connected through the text protocol
- * port. Returns a Command struct describing the data that was read.
- * The consumer must free the memory of the Command struct received.
+ * port and saves the read data in the given Command struct.
+ * It's responsibility of the consumer to free the pointers inside the given
+ * command, if any of them is not NULL.
  */
-struct Command *parse_text(int client_fd) {
-  struct Command *command = calloc(1, sizeof(struct Command));
-
+void parse_text(int client_fd, struct Command *command) {
   // TODO: Figure out why using this kind of buffer definition breaks
   // everything.
   //   char buf[MAX_REQUEST_SIZE + 1];
@@ -133,7 +136,7 @@ struct Command *parse_text(int client_fd) {
   if (bytes_read > MAX_REQUEST_SIZE || bytes_read < 0) {
     command->type = BT_EINVAL;
     free(tofree);
-    return command;
+    return;
   }
 
   // TODO: this might break if the above happens... we are assuming the reads
@@ -146,7 +149,7 @@ struct Command *parse_text(int client_fd) {
   if (newline == NULL) {
     command->type = BT_EINVAL;
     free(tofree);
-    return command;
+    return;
   }
 
   // We forcefully terminate the buffer at the newline, this might be wrong too,
@@ -197,8 +200,6 @@ struct Command *parse_text(int client_fd) {
   }
 
   free(tofree);
-
-  return command;
 }
 
 /* Reads an argument from the binary client according to the text protocol
@@ -235,17 +236,16 @@ static bool read_argument_from_binary_client(int client_fd, uint32_t *arg_size,
 }
 
 /* Parses the data read from a client that connected through the binary protocol
- * port. Returns a Command struct describing the data that was read.
- * The consumer must free the memory of the Command struct received.
+ * port and saves the read data in the given Command struct.
+ * It's responsibility of the consumer to free the pointers inside the given
+ * command, if any of them is not NULL.
  */
-struct Command *parse_binary(int client_fd) {
-  struct Command *command = calloc(1, sizeof(struct Command));
-
+void parse_binary(int client_fd, struct Command *command) {
   int bytes_read = recv(client_fd, &command->type, 1, 0);
   if (bytes_read < 0) {
     perror("Error reading command type from binary client");
     command->type = BT_EINVAL;
-    return command;
+    return;
   }
 
   switch (command->type) {
@@ -284,6 +284,4 @@ struct Command *parse_binary(int client_fd) {
   default:
     break;
   }
-
-  return command;
 }

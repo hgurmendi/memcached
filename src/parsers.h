@@ -29,7 +29,13 @@ struct Command {
   char *arg2;
 };
 
+/* Returns a string representing the binary type.
+ */
 char *binary_type_str(int binary_type);
+
+/* Frees the memory of the arguments of the Command struct.
+ */
+void destroy_command_args(struct Command *command);
 
 /* Frees the memory of the given Command struct.
  */
@@ -44,15 +50,17 @@ void initialize_command(struct Command *command);
 void print_command(struct Command *command);
 
 /* Parses the data read from a client that connected through the text protocol
- * port. Returns a Command struct describing the data that was read.
- * The consumer must free the memory of the Command struct received.
+ * port and saves the read data in the given Command struct.
+ * It's responsibility of the consumer to free the pointers inside the given
+ * command, if any of them is not NULL.
  */
-struct Command *parse_text(int client_fd);
+void parse_text(int client_fd, struct Command *command);
 
 /* Parses the data read from a client that connected through the binary protocol
- * port. Returns a Command struct describing the data that was read.
- * The consumer must free the memory of the Command struct received.
+ * port and saves the read data in the given Command struct.
+ * It's responsibility of the consumer to free the pointers inside the given
+ * command, if any of them is not NULL.
  */
-struct Command *parse_binary(int client_fd);
+void parse_binary(int client_fd, struct Command *command);
 
 #endif
