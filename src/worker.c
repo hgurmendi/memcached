@@ -7,6 +7,7 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include "command.h"
 #include "epoll.h"
 #include "parsers.h"
 #include "worker.h"
@@ -117,8 +118,8 @@ static void handle_client(struct ClientEpollEventData *event_data) {
   struct Command received_command;
   struct Command response_command;
 
-  initialize_command(&received_command);
-  initialize_command(&response_command);
+  command_initialize(&received_command);
+  command_initialize(&response_command);
 
   if (event_data->connection_type == TEXT) {
     printf("Handling text data\n");
@@ -129,7 +130,7 @@ static void handle_client(struct ClientEpollEventData *event_data) {
   }
 
   printf("Received command:\n");
-  print_command(&received_command);
+  command_print(&received_command);
 
   switch (received_command.type) {
   case BT_PUT:
@@ -190,10 +191,10 @@ static void handle_client(struct ClientEpollEventData *event_data) {
     respond_binary_to_client(event_data, &response_command);
   }
 
-  destroy_command_args(&response_command);
+  command_destroy_args(&response_command);
   // TODO: we might not want to free the memory of the received command since
   // we'll use the already allocated memory for storing the key and/or values.
-  destroy_command_args(&received_command);
+  command_destroy_args(&received_command);
 }
 
 static void *worker_func(void *worker_args) {

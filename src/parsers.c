@@ -7,76 +7,6 @@
 
 #include "parsers.h"
 
-/* Returns a string representing the binary type.
- */
-char *binary_type_str(int binary_type) {
-  switch (binary_type) {
-  case BT_PUT:
-    return "PUT";
-  case BT_DEL:
-    return "DEL";
-  case BT_GET:
-    return "GET";
-  case BT_TAKE:
-    return "TAKE";
-  case BT_STATS:
-    return "STATS";
-  case BT_OK:
-    return "OK";
-  case BT_EINVAL:
-    return "EINVAL";
-  case BT_ENOTFOUND:
-    return "ENOTFOUND";
-  case BT_EBINARY:
-    return "EBINARY";
-  case BT_EBIG:
-    return "EBIG";
-  case BT_EUNK:
-    return "EUNK";
-  default:
-    return "Unknown binary type";
-  }
-}
-
-/* Frees the memory of the arguments of the Command struct.
- */
-void destroy_command_args(struct Command *command) {
-  if (command->arg1 != NULL) {
-    free(command->arg1);
-    command->arg1 = NULL;
-    command->arg1_size = 0;
-  }
-  if (command->arg2 != NULL) {
-    free(command->arg2);
-    command->arg2 = NULL;
-    command->arg2_size = 0;
-  }
-}
-
-/* Frees the memory of the given Command struct and its arguments.
- */
-void destroy_command(struct Command *command) {
-  destroy_command_args(command);
-  free(command);
-}
-
-/* Initializes the given command to an empty state.
- */
-void initialize_command(struct Command *command) {
-  command->type = BT_OK;
-  command->arg1 = command->arg2 = NULL;
-  command->arg1_size = command->arg2_size = 0;
-}
-
-/* Prints the given Command struct to stdout.
- */
-void print_command(struct Command *command) {
-  printf("Command:\n");
-  printf("Type: %s (%d)\n", binary_type_str(command->type), command->type);
-  printf("Arg1 (size %d): %s\n", command->arg1_size, command->arg1);
-  printf("Arg2 (size %d): %s\n", command->arg2_size, command->arg2);
-}
-
 /* Reads an argument from the text client according to the text protocol
  * specification.
  * Allocates memory for the buffer where the text argument is going to be stored
@@ -167,7 +97,7 @@ void parse_text(int client_fd, struct Command *command) {
       command->type = BT_PUT;
     } else {
       command->type = BT_EINVAL;
-      destroy_command_args(command);
+      command_destroy_args(command);
     }
   } else if (tokenEquals(token, "DEL")) {
     if (read_argument_from_text_client(&buf, &command->arg1,
@@ -175,7 +105,7 @@ void parse_text(int client_fd, struct Command *command) {
       command->type = BT_DEL;
     } else {
       command->type = BT_EINVAL;
-      destroy_command_args(command);
+      command_destroy_args(command);
     }
   } else if (tokenEquals(token, "GET")) {
     if (read_argument_from_text_client(&buf, &command->arg1,
@@ -183,7 +113,7 @@ void parse_text(int client_fd, struct Command *command) {
       command->type = BT_GET;
     } else {
       command->type = BT_EINVAL;
-      destroy_command_args(command);
+      command_destroy_args(command);
     }
   } else if (tokenEquals(token, "TAKE")) {
     if (read_argument_from_text_client(&buf, &command->arg1,
@@ -191,7 +121,7 @@ void parse_text(int client_fd, struct Command *command) {
       command->type = BT_TAKE;
     } else {
       command->type = BT_EINVAL;
-      destroy_command_args(command);
+      command_destroy_args(command);
     }
   } else if (tokenEquals(token, "STATS")) {
     command->type = BT_STATS;
@@ -255,28 +185,28 @@ void parse_binary(int client_fd, struct Command *command) {
         !read_argument_from_binary_client(client_fd, &command->arg2_size,
                                           &command->arg2)) {
       command->type = BT_EINVAL;
-      destroy_command_args(command);
+      command_destroy_args(command);
     }
     break;
   case BT_DEL:
     if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
                                           &command->arg1)) {
       command->type = BT_EINVAL;
-      destroy_command_args(command);
+      command_destroy_args(command);
     }
     break;
   case BT_GET:
     if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
                                           &command->arg1)) {
       command->type = BT_EINVAL;
-      destroy_command_args(command);
+      command_destroy_args(command);
     }
     break;
   case BT_TAKE:
     if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
                                           &command->arg1)) {
       command->type = BT_EINVAL;
-      destroy_command_args(command);
+      command_destroy_args(command);
     }
     break;
   case BT_STATS:
