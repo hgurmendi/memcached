@@ -4,9 +4,9 @@
 #include <netdb.h>
 #include <sys/epoll.h>
 
-#define MAX_EVENTS 64
+#include "common.h"
 
-enum ConnectionTypes { BINARY, TEXT };
+#define MAX_EVENTS 64
 
 // @TODO: Change this
 // This is a struct whose memory should be requested by the dispatcher

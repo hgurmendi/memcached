@@ -6,6 +6,7 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include "common.h"
 #include "dispatcher.h"
 #include "epoll.h"
 #include "sockets.h"
@@ -16,7 +17,8 @@
  * The scheduling policy is implemented here.
  */
 static void
-accept_incoming_connections(struct DispatcherState *dispatcher_state) {
+accept_incoming_connections(struct DispatcherState *dispatcher_state,
+                            enum ConnectionTypes connection_type) {
   struct sockaddr incoming_addr;
   socklen_t incoming_addr_len = sizeof(incoming_addr);
   int client_fd;
@@ -24,10 +26,11 @@ accept_incoming_connections(struct DispatcherState *dispatcher_state) {
   char host_buf[NI_MAXHOST];
   char port_buf[NI_MAXSERV];
   struct epoll_event event;
+  int server_fd = (connection_type == TEXT ? dispatcher_state->text_fd
+                                           : dispatcher_state->binary_fd);
 
   while (true) {
-    client_fd =
-        accept(dispatcher_state->server_fd, &incoming_addr, &incoming_addr_len);
+    client_fd = accept(server_fd, &incoming_addr, &incoming_addr_len);
     if (client_fd == -1) {
       if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
         // We already processed all incoming connections, just return.
@@ -62,8 +65,7 @@ accept_incoming_connections(struct DispatcherState *dispatcher_state) {
     }
 
     event_data->fd = client_fd;
-    event_data->connection_type =
-        TEXT; // For now all the clients are using the text protocol
+    event_data->connection_type = connection_type;
     strncpy(event_data->host, host_buf, NI_MAXHOST);
     strncpy(event_data->port, port_buf, NI_MAXSERV);
 
@@ -88,14 +90,7 @@ accept_incoming_connections(struct DispatcherState *dispatcher_state) {
  * dispatches them to a worker's epoll.
  */
 void dispatcher_loop(struct DispatcherState *dispatcher_state) {
-  struct epoll_event *events;
-  // Allocate enough zeroed memory for all the simultaneous events that we'll
-  // be listening to.
-  events = calloc(MAX_EVENTS, sizeof(struct epoll_event));
-  if (events == NULL) {
-    perror("calloc events");
-    abort();
-  }
+  struct epoll_event events[MAX_EVENTS];
 
   while (true) {
     int num_events;
@@ -109,12 +104,12 @@ void dispatcher_loop(struct DispatcherState *dispatcher_state) {
         printf("Accepting client connection\n");
         // Read data from the server socket (i.e. accept incoming
         // connections).
-        accept_incoming_connections(dispatcher_state);
+        accept_incoming_connections(
+            dispatcher_state,
+            events[i].data.fd == dispatcher_state->text_fd ? TEXT : BINARY);
       }
     }
   }
-
-  free(events);
 }
 
 /* Initializes the epoll instance for the dispatcher, the one that listens for
@@ -132,12 +127,21 @@ initialize_dispatcher_epoll(struct DispatcherState *dispatcher_state) {
     abort();
   }
 
-  // Start by just monitoring the incoming connections file descriptor
-  // `server_fd`.
-  event.data.fd = dispatcher_state->server_fd;
+  // Monitor the text protocol server file descriptor.
+  event.data.fd = dispatcher_state->text_fd;
   event.events = EPOLLIN | EPOLLET;
   status = epoll_ctl(dispatcher_state->epoll_fd, EPOLL_CTL_ADD,
-                     dispatcher_state->server_fd, &event);
+                     dispatcher_state->text_fd, &event);
+  if (status == -1) {
+    perror("epoll_ctl");
+    abort();
+  }
+
+  // Monitor the binary protocol server file descriptor.
+  event.data.fd = dispatcher_state->binary_fd;
+  event.events = EPOLLIN | EPOLLET;
+  status = epoll_ctl(dispatcher_state->epoll_fd, EPOLL_CTL_ADD,
+                     dispatcher_state->binary_fd, &event);
   if (status == -1) {
     perror("epoll_ctl");
     abort();
@@ -147,7 +151,8 @@ initialize_dispatcher_epoll(struct DispatcherState *dispatcher_state) {
 /* Initializes the all the resources needed by the Dispatcher.
  */
 void initialize_dispatcher(struct DispatcherState *dispatcher_state,
-                           int num_workers, char *port) {
+                           int num_workers, char *text_port,
+                           char *binary_port) {
   dispatcher_state->num_workers = num_workers;
   dispatcher_state->next_worker = 0;
   dispatcher_state->worker_threads =
@@ -166,7 +171,8 @@ void initialize_dispatcher(struct DispatcherState *dispatcher_state,
   initialize_workers(num_workers, dispatcher_state->worker_threads,
                      dispatcher_state->worker_epoll_fds);
 
-  dispatcher_state->server_fd = create_listen_socket(port);
+  dispatcher_state->text_fd = create_listen_socket(text_port);
+  dispatcher_state->binary_fd = create_listen_socket(binary_port);
 
   initialize_dispatcher_epoll(dispatcher_state);
 }
@@ -176,7 +182,9 @@ void initialize_dispatcher(struct DispatcherState *dispatcher_state,
  * by the workers themselves.
  */
 void destroy_dispatcher(struct DispatcherState *dispatcher_state) {
-  close(dispatcher_state->server_fd);
+  close(dispatcher_state->epoll_fd);
+  close(dispatcher_state->text_fd);
+  close(dispatcher_state->binary_fd);
   free(dispatcher_state->worker_threads);
   free(dispatcher_state->worker_epoll_fds);
   free(dispatcher_state);
