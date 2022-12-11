@@ -23,11 +23,13 @@ struct Command {
   enum BINARY_TYPES type;
 
   uint32_t arg1_size;
-  unsigned char *arg1;
+  char *arg1;
 
   uint32_t arg2_size;
-  unsigned char *arg2;
+  char *arg2;
 };
+
+char *binary_type_str(int binary_type);
 
 /* Frees the memory of the given Command struct.
  */

@@ -30,7 +30,7 @@ static void close_client(struct ClientEpollEventData *event_data) {
  */
 static int respond_binary_to_client(struct ClientEpollEventData *event_data,
                                     struct Command *response_command) {
-  unsigned char response_code;
+  char response_code;
 
   // @TODO: error handling of the sends?
 
@@ -147,8 +147,7 @@ static void handle_client(struct ClientEpollEventData *event_data) {
     // the binary protocol because in that case we have to actually send EBINARY
     // in the text protocol.
     response_command->type = BT_OK;
-    response_command->arg1 =
-        (unsigned char *)strdup("This_is_the_returned_value");
+    response_command->arg1 = strdup("This_is_the_returned_value");
     response_command->arg1_size = sizeof("This_is_the_returned_value");
     break;
   case BT_TAKE:
@@ -158,8 +157,7 @@ static void handle_client(struct ClientEpollEventData *event_data) {
     // the binary protocol because in that case we have to actually send EBINARY
     // in the text protocol.
     response_command->type = BT_OK;
-    response_command->arg1 =
-        (unsigned char *)strdup("This_is_the_returned_value");
+    response_command->arg1 = strdup("This_is_the_returned_value");
     response_command->arg1_size = sizeof("This_is_the_returned_value");
     break;
   case BT_STATS:
@@ -167,8 +165,8 @@ static void handle_client(struct ClientEpollEventData *event_data) {
     // namely: number of PUTs, number of DELs, number of GETs, number of TAKEs,
     // number of STATSs, number of KEYs (i.e. key-value pairs) stored.
     response_command->type = BT_OK;
-    response_command->arg1 = (unsigned char *)strdup(
-        "PUTS=111 DELS=99 GETS=381323 TAKES=1234 STATS=123 KEYS=132");
+    response_command->arg1 =
+        strdup("PUTS=111 DELS=99 GETS=381323 TAKES=1234 STATS=123 KEYS=132");
     response_command->arg1_size =
         sizeof("PUTS=111 DELS=99 GETS=381323 TAKES=1234 STATS=123 KEYS=132");
     break;

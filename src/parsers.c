@@ -7,15 +7,52 @@
 
 #include "parsers.h"
 
-/* Frees the memory of the given Command struct.
- */
-void destroy_command(struct Command *command) {
+char *binary_type_str(int binary_type) {
+  switch (binary_type) {
+  case BT_PUT:
+    return "PUT";
+  case BT_DEL:
+    return "DEL";
+  case BT_GET:
+    return "GET";
+  case BT_TAKE:
+    return "TAKE";
+  case BT_STATS:
+    return "STATS";
+  case BT_OK:
+    return "OK";
+  case BT_EINVAL:
+    return "EINVAL";
+  case BT_ENOTFOUND:
+    return "ENOTFOUND";
+  case BT_EBINARY:
+    return "EBINARY";
+  case BT_EBIG:
+    return "EBIG";
+  case BT_EUNK:
+    return "EUNK";
+  default:
+    return "Unknown binary type";
+  }
+}
+
+static void destroy_command_args(struct Command *command) {
   if (command->arg1 != NULL) {
     free(command->arg1);
+    command->arg1 = NULL;
+    command->arg1_size = 0;
   }
   if (command->arg2 != NULL) {
     free(command->arg2);
+    command->arg2 = NULL;
+    command->arg2_size = 0;
   }
+}
+
+/* Frees the memory of the given Command struct.
+ */
+void destroy_command(struct Command *command) {
+  destroy_command_args(command);
   free(command);
 }
 
@@ -31,7 +68,7 @@ void initialize_command(struct Command *command) {
  */
 void print_command(struct Command *command) {
   printf("Command:\n");
-  printf("Type: %d\n", command->type);
+  printf("Type: %s (%d)\n", binary_type_str(command->type), command->type);
   printf("Arg1 (size %d): %s\n", command->arg1_size, command->arg1);
   printf("Arg2 (size %d): %s\n", command->arg2_size, command->arg2);
 }
@@ -42,16 +79,30 @@ void print_command(struct Command *command) {
  * and stores it in the `arg` pointer, and stores the size in `arg_size`.
  * Returns true if it was able to successfully read the argument from the
  * buffer, false otherwise.
+ * Mutates the char bufer pointed at by buf because we use strdup.
  */
-static bool read_argument_from_text_client(char **buf, unsigned char **arg,
+static bool read_argument_from_text_client(char **buf, char **arg,
                                            uint32_t *arg_size) {
   if (*buf == NULL) {
+    // We ran out of space-separated tokens in the text buffer, so we can't read
+    // any more text arguments.
     return false;
   }
+
   char *token = strsep(buf, " ");
-  *arg_size = (uint32_t)strnlen(token, MAX_REQUEST_SIZE);
-  *arg = calloc(*arg_size, sizeof(unsigned char));
-  memcpy(token, (char *)*arg, *arg_size);
+  *arg_size = strnlen(token, MAX_REQUEST_SIZE) + 1;
+  if (*arg_size <= 1) {
+    // Got an empty token... i.e. "GET "
+    return false;
+  }
+
+  *arg = calloc(*arg_size, sizeof(char));
+  if (*arg == NULL) {
+    perror("Error allocating memory for text client argument");
+    return false;
+  }
+
+  memcpy(*arg, token, *arg_size);
   return true;
 }
 
@@ -73,14 +124,15 @@ struct Command *parse_text(int client_fd) {
   //   char buf[MAX_REQUEST_SIZE + 1];
   char *buf = calloc(MAX_REQUEST_SIZE + 1, sizeof(char));
   char *tofree = buf;
-  int bytes_read = read(client_fd, buf, MAX_REQUEST_SIZE + 1);
+  int bytes_read = recv(client_fd, buf, MAX_REQUEST_SIZE + 1, 0);
 
   // TODO: this might break if we read more characters after the newline
   // character, for example in a "burst" of data from a client... we might have
   // to do something different like continuously store in a buffer until a
   // newline is found and parse once we find a newline...
-  if (bytes_read > MAX_REQUEST_SIZE) {
+  if (bytes_read > MAX_REQUEST_SIZE || bytes_read < 0) {
     command->type = BT_EINVAL;
+    free(tofree);
     return command;
   }
 
@@ -93,6 +145,7 @@ struct Command *parse_text(int client_fd) {
   // character in it
   if (newline == NULL) {
     command->type = BT_EINVAL;
+    free(tofree);
     return command;
   }
 
@@ -111,6 +164,7 @@ struct Command *parse_text(int client_fd) {
       command->type = BT_PUT;
     } else {
       command->type = BT_EINVAL;
+      destroy_command_args(command);
     }
   } else if (tokenEquals(token, "DEL")) {
     if (read_argument_from_text_client(&buf, &command->arg1,
@@ -118,6 +172,7 @@ struct Command *parse_text(int client_fd) {
       command->type = BT_DEL;
     } else {
       command->type = BT_EINVAL;
+      destroy_command_args(command);
     }
   } else if (tokenEquals(token, "GET")) {
     if (read_argument_from_text_client(&buf, &command->arg1,
@@ -125,6 +180,7 @@ struct Command *parse_text(int client_fd) {
       command->type = BT_GET;
     } else {
       command->type = BT_EINVAL;
+      destroy_command_args(command);
     }
   } else if (tokenEquals(token, "TAKE")) {
     if (read_argument_from_text_client(&buf, &command->arg1,
@@ -132,6 +188,7 @@ struct Command *parse_text(int client_fd) {
       command->type = BT_TAKE;
     } else {
       command->type = BT_EINVAL;
+      destroy_command_args(command);
     }
   } else if (tokenEquals(token, "STATS")) {
     command->type = BT_STATS;
@@ -144,21 +201,37 @@ struct Command *parse_text(int client_fd) {
   return command;
 }
 
-/* Reads an argument from the client file descriptor according to the binary
- * protocol specification.
+/* Reads an argument from the binary client according to the text protocol
+ * specification.
+ * Allocates memory for the buffer where the binary argument is going to be
+ * stored and stores it in the `arg` pointer, and stores the size in `arg_size`.
+ * Returns true if it was able to successfully read the argument from the
+ * buffer, false otherwise.
  */
-static unsigned char *read_argument_from_binary_client(int client_fd,
-                                                       uint32_t *arg_size) {
-  uint32_t argument_size;
-  // TODO: error checking on the bytes read?
-  int bytes_read = read(client_fd, &argument_size, 4);
-  argument_size = ntohl(argument_size);
+static bool read_argument_from_binary_client(int client_fd, uint32_t *arg_size,
+                                             char **arg) {
+  int bytes_read;
 
-  unsigned char *argument = calloc(argument_size, sizeof(unsigned char));
-  // TODO: error checking on the bytes read?
-  bytes_read = read(client_fd, argument, argument_size);
-  *arg_size = argument_size;
-  return argument;
+  bytes_read = recv(client_fd, (void *)arg_size, 4, 0);
+  if (bytes_read < 0) {
+    perror("Error reading argument size from binary client.");
+    return false;
+  }
+
+  *arg_size = ntohl(*arg_size);
+  *arg = calloc(*arg_size, sizeof(char));
+  if (*arg == NULL) {
+    perror("Error allocating memory for binary client argument");
+    return false;
+  }
+
+  bytes_read = recv(client_fd, (void *)*arg, *arg_size, 0);
+  if (bytes_read < 0) {
+    perror("Error reading argument from binary client.");
+    return false;
+  }
+
+  return true;
 }
 
 /* Parses the data read from a client that connected through the binary protocol
@@ -168,31 +241,43 @@ static unsigned char *read_argument_from_binary_client(int client_fd,
 struct Command *parse_binary(int client_fd) {
   struct Command *command = calloc(1, sizeof(struct Command));
 
-  // TODO: error checking on the bytes read?
-  int bytes_read = read(client_fd, &command->type, 1);
+  int bytes_read = recv(client_fd, &command->type, 1, 0);
+  if (bytes_read < 0) {
+    perror("Error reading command type from binary client");
+    command->type = BT_EINVAL;
+    return command;
+  }
 
   switch (command->type) {
   case BT_PUT:
-    command->arg1 =
-        read_argument_from_binary_client(client_fd, &command->arg1_size);
-    command->arg2 =
-        read_argument_from_binary_client(client_fd, &command->arg2_size);
-
+    if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
+                                          &command->arg1) ||
+        !read_argument_from_binary_client(client_fd, &command->arg2_size,
+                                          &command->arg2)) {
+      command->type = BT_EINVAL;
+      destroy_command_args(command);
+    }
     break;
   case BT_DEL:
-    command->arg1 =
-        read_argument_from_binary_client(client_fd, &command->arg1_size);
-
+    if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
+                                          &command->arg1)) {
+      command->type = BT_EINVAL;
+      destroy_command_args(command);
+    }
     break;
   case BT_GET:
-    command->arg1 =
-        read_argument_from_binary_client(client_fd, &command->arg1_size);
-
+    if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
+                                          &command->arg1)) {
+      command->type = BT_EINVAL;
+      destroy_command_args(command);
+    }
     break;
   case BT_TAKE:
-    command->arg1 =
-        read_argument_from_binary_client(client_fd, &command->arg1_size);
-
+    if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
+                                          &command->arg1)) {
+      command->type = BT_EINVAL;
+      destroy_command_args(command);
+    }
     break;
   case BT_STATS:
     break;
