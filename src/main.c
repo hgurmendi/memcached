@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/sysinfo.h>
 
 #include "dispatcher.h"
 #include "parameters.h"
@@ -22,7 +23,10 @@ int main(int argc, char *argv[]) {
     abort();
   }
 
-  dispatcher_initialize(dispatcher_state, NUM_WORKERS, text_port, binary_port);
+  int num_processors = get_nprocs();
+  int num_workers = num_processors > 1 ? num_processors - 1 : 1;
+
+  dispatcher_initialize(dispatcher_state, num_workers, text_port, binary_port);
 
   dispatcher_loop(dispatcher_state);
 

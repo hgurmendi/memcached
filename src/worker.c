@@ -43,14 +43,14 @@ static char *get_hashtable_ret_string(int ret) {
 // Creates the string response in the stack, then allocates enough memory for it
 // and mutates the `response_size` and `response` pointers if there is no
 // problem with the memory allocation.
-void generate_stats_response(struct WorkerStats *workers_stats,
+void generate_stats_response(struct WorkerStats *workers_stats, int num_workers,
                              uint64_t keys_count, uint32_t *response_size,
                              char **response) {
   struct WorkerStats summary;
   char buf[MAX_REQUEST_SIZE];
   int bytes_written = 0;
 
-  worker_stats_merge(workers_stats, NUM_WORKERS, &summary);
+  worker_stats_merge(workers_stats, num_workers, &summary);
 
   bytes_written =
       snprintf(buf, MAX_REQUEST_SIZE,
@@ -74,7 +74,7 @@ void generate_stats_response(struct WorkerStats *workers_stats,
 static void handle_client(struct ClientEpollEventData *event_data,
                           struct HashTable *hashtable,
                           struct WorkerStats *stats,
-                          struct WorkerStats *workers_stats) {
+                          struct WorkerStats *workers_stats, int num_workers) {
   struct Command received_command;
   struct Command response_command;
   int ret;
@@ -194,9 +194,9 @@ static void handle_client(struct ClientEpollEventData *event_data,
     // Return OK along with various statistics about the usage of the cache,
     // namely: number of PUTs, number of DELs, number of GETs, number of TAKEs,
     // number of STATSs, number of KEYs (i.e. key-value pairs) stored.
-    generate_stats_response(workers_stats, hashtable_key_count(hashtable),
-                            &response_command.arg1_size,
-                            &response_command.arg1);
+    generate_stats_response(
+        workers_stats, num_workers, hashtable_key_count(hashtable),
+        &response_command.arg1_size, &response_command.arg1);
     response_command.type = BT_OK;
 
     if (response_command.arg1_size == 0 || response_command.arg1 == NULL) {
@@ -273,7 +273,7 @@ static void *worker_func(void *worker_args) {
                                                    : "Binary connection");
 
         handle_client(event_data, args->hashtable, args->stats,
-                      args->workers_stats);
+                      args->workers_stats, args->num_workers);
       }
     }
   }
@@ -306,8 +306,9 @@ void initialize_workers(int num_workers, pthread_t *worker_threads,
     snprintf(worker_args->name, sizeof(worker_args->name), "Worker %d", i);
     worker_args->epoll_fd = worker_epoll_fds[i];
     worker_args->hashtable = hashtable;
-    worker_args->workers_stats = workers_stats;
     worker_args->stats = &workers_stats[i];
+    worker_args->workers_stats = workers_stats;
+    worker_args->num_workers = num_workers;
     worker_stats_initialize(worker_args->stats);
 
     int ret = pthread_create(&worker_threads[i], NULL, worker_func,

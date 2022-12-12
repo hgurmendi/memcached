@@ -36,6 +36,9 @@ struct WorkerArgs {
   struct WorkerStats *stats;
   // Shared array of all the workers' stats.
   struct WorkerStats *workers_stats;
+  // Total number of workers (we need to know the boundary of the workers_stats
+  // array).
+  int num_workers;
 };
 
 /* Initializes the workers and stores some data in dispatcher memory.
