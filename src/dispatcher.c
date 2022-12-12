@@ -178,9 +178,17 @@ void dispatcher_initialize(struct DispatcherState *dispatcher_state,
     abort();
   }
 
+  dispatcher_state->workers_stats =
+      malloc(sizeof(struct WorkerStats) * num_workers);
+  if (dispatcher_state->workers_stats == NULL) {
+    perror("malloc workers_stats");
+    abort();
+  }
+
   initialize_workers(num_workers, dispatcher_state->worker_threads,
                      dispatcher_state->worker_epoll_fds,
-                     dispatcher_state->hashtable);
+                     dispatcher_state->hashtable,
+                     dispatcher_state->workers_stats);
 
   dispatcher_state->text_fd = create_listen_socket(text_port);
   dispatcher_state->binary_fd = create_listen_socket(binary_port);

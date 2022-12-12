@@ -4,6 +4,7 @@
 #include <pthread.h>
 
 #include "hashtable/hashtable.h"
+#include "worker.h"
 
 struct DispatcherState {
   // Bound file descriptor used for the text protocol.
@@ -23,6 +24,8 @@ struct DispatcherState {
   int next_worker;
   // Shared hash table instance.
   struct HashTable *hashtable;
+  // Shared array of all the workers' stats.
+  struct WorkerStats *workers_stats;
 };
 
 // void dispatcher_loop(struct DispatcherState *dispatcher_state);
