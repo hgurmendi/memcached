@@ -10,6 +10,7 @@
 
 #include "epoll.h"
 #include "hashtable/hashtable.h"
+#include "parameters.h"
 #include "protocol/binary.h"
 #include "protocol/command.h"
 #include "protocol/text.h"
@@ -39,11 +40,41 @@ static char *get_hashtable_ret_string(int ret) {
   }
 }
 
+// Creates the string response in the stack, then allocates enough memory for it
+// and mutates the `response_size` and `response` pointers if there is no
+// problem with the memory allocation.
+void generate_stats_response(struct WorkerStats *workers_stats, int num_workers,
+                             uint64_t keys_count, uint32_t *response_size,
+                             char **response) {
+  struct WorkerStats summary;
+  char buf[MAX_REQUEST_SIZE];
+  int bytes_written = 0;
+
+  worker_stats_merge(workers_stats, num_workers, &summary);
+
+  bytes_written =
+      snprintf(buf, MAX_REQUEST_SIZE,
+               "PUTS=%lu DELS=%lu GETS=%lu TAKES=%lu STATS=%lu KEYS=%lu",
+               summary.put_count, summary.del_count, summary.get_count,
+               summary.take_count, summary.stats_count, keys_count);
+
+  char *duplicate = strdup(buf);
+  if (duplicate == NULL) {
+    perror("strdup stats response");
+    return;
+  }
+
+  *response = duplicate;
+  *response_size = bytes_written + 1;
+}
+
 /* Handles incoming data from a client connection. If the client closes the
  * connection, we close the file descriptor and epoll manages it accordingly.
  */
 static void handle_client(struct ClientEpollEventData *event_data,
-                          struct HashTable *hashtable) {
+                          struct HashTable *hashtable,
+                          struct WorkerStats *stats,
+                          struct WorkerStats *workers_stats, int num_workers) {
   struct Command received_command;
   struct Command response_command;
   int ret;
@@ -74,6 +105,8 @@ static void handle_client(struct ClientEpollEventData *event_data,
     received_command.arg1 = received_command.arg2 = NULL;
 
     response_command.type = BT_OK;
+
+    stats->put_count += 1;
     break;
   case BT_DEL:
     // Remove the key-value pair corresponding to the key if it exists and
@@ -88,6 +121,8 @@ static void handle_client(struct ClientEpollEventData *event_data,
     } else {
       response_command.type = BT_OK;
     }
+
+    stats->del_count += 1;
     break;
   case BT_GET:
     // Return the value corresponding to they key if it exists and return OK
@@ -121,6 +156,8 @@ static void handle_client(struct ClientEpollEventData *event_data,
       // arg1_size and arg1 already contain the value size and value for the
       // corresponding key. It should be freed after being sent to the client.
     }
+
+    stats->get_count += 1;
     break;
   case BT_TAKE:
     // Remove the key-value pair corresponding to the key if it exists and
@@ -150,17 +187,27 @@ static void handle_client(struct ClientEpollEventData *event_data,
       // arg1_size and arg1 already contain the value size and value for the
       // corresponding key. It should be freed after being sent to the client.
     }
+
+    stats->take_count += 1;
     break;
   case BT_STATS:
     // Return OK along with various statistics about the usage of the cache,
     // namely: number of PUTs, number of DELs, number of GETs, number of TAKEs,
     // number of STATSs, number of KEYs (i.e. key-value pairs) stored.
+    generate_stats_response(
+        workers_stats, num_workers, hashtable_key_count(hashtable),
+        &response_command.arg1_size, &response_command.arg1);
     response_command.type = BT_OK;
-    response_command.arg1 =
-        strdup("PUTS=XXX DELS=XXX GETS=XXX TAKES=XXX STATS=XXX KEYS=XXX");
-    response_command.arg1_size =
-        sizeof("PUTS=XXX DELS=XXX GETS=XXX TAKES=XXX STATS=XXX KEYS=XXX");
-    hashtable_print(hashtable);
+
+    if (response_command.arg1_size == 0 || response_command.arg1 == NULL) {
+      printf("Error generating the response for the STATS command.\n");
+
+      response_command.type = BT_OK;
+      response_command.arg1 = strdup("ERROR GENERATING STATS");
+      response_command.arg1_size = sizeof("ERROR GENERATING STATS");
+    }
+
+    stats->stats_count += 1;
     break;
   case BT_EINVAL:
     // Error parsing the request, just return EINVAL.
@@ -225,7 +272,8 @@ static void *worker_func(void *worker_args) {
                event_data->connection_type == TEXT ? "Text connection"
                                                    : "Binary connection");
 
-        handle_client(event_data, args->hashtable);
+        handle_client(event_data, args->hashtable, args->stats,
+                      args->workers_stats, args->num_workers);
       }
     }
   }
@@ -236,7 +284,8 @@ static void *worker_func(void *worker_args) {
 }
 
 void initialize_workers(int num_workers, pthread_t *worker_threads,
-                        int *worker_epoll_fds, struct HashTable *hashtable) {
+                        int *worker_epoll_fds, struct HashTable *hashtable,
+                        struct WorkerStats *workers_stats) {
   for (int i = 0; i < num_workers; i++) {
     printf("Creating worker %d...\n", i);
 
@@ -257,6 +306,10 @@ void initialize_workers(int num_workers, pthread_t *worker_threads,
     snprintf(worker_args->name, sizeof(worker_args->name), "Worker %d", i);
     worker_args->epoll_fd = worker_epoll_fds[i];
     worker_args->hashtable = hashtable;
+    worker_args->stats = &workers_stats[i];
+    worker_args->workers_stats = workers_stats;
+    worker_args->num_workers = num_workers;
+    worker_stats_initialize(worker_args->stats);
 
     int ret = pthread_create(&worker_threads[i], NULL, worker_func,
                              (void *)worker_args);
@@ -264,5 +317,31 @@ void initialize_workers(int num_workers, pthread_t *worker_threads,
       perror("pthread_create");
       abort();
     }
+  }
+}
+
+/* Initializes an instance of a WorkerStats struct with all its values in
+ * zero.
+ */
+void worker_stats_initialize(struct WorkerStats *stats) {
+  stats->put_count = 0;
+  stats->del_count = 0;
+  stats->get_count = 0;
+  stats->take_count = 0;
+  stats->stats_count = 0;
+}
+
+/* Takes an array of WorkerStats structs and the number of structs in the array
+ * and merges (i.e. sums) each member field into the destination struct.
+ */
+void worker_stats_merge(struct WorkerStats *workers_stats, int num_worker_stats,
+                        struct WorkerStats *destination_stats) {
+  worker_stats_initialize(destination_stats);
+  for (int i = 0; i < num_worker_stats; i++) {
+    destination_stats->put_count += workers_stats[i].put_count;
+    destination_stats->del_count += workers_stats[i].del_count;
+    destination_stats->get_count += workers_stats[i].get_count;
+    destination_stats->take_count += workers_stats[i].take_count;
+    destination_stats->stats_count += workers_stats[i].stats_count;
   }
 }

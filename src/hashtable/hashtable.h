@@ -16,6 +16,10 @@ struct HashTable {
   HashFunction hash;
 };
 
+/* Returns the number of unique keys present in the hash table.
+ */
+uint64_t hashtable_key_count(struct HashTable *hashtable);
+
 /* Allocates all the resources necessary for a hash table with `size` buckets.
  */
 struct HashTable *hashtable_create(uint32_t buckets_size, HashFunction hash);
