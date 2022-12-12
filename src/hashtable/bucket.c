@@ -40,6 +40,7 @@ void node_destroy(struct BucketNode *node) {
 void bucket_initialize(struct Bucket *bucket) {
   bucket->node = NULL;
   pthread_mutex_init(&(bucket->lock), NULL);
+  bucket->key_count = 0;
 }
 
 /* Traverses and destroys all the nodes of a bucket from the hash table.

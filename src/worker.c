@@ -44,17 +44,19 @@ static char *get_hashtable_ret_string(int ret) {
 // and mutates the `response_size` and `response` pointers if there is no
 // problem with the memory allocation.
 void generate_stats_response(struct WorkerStats *workers_stats,
-                             uint32_t *response_size, char **response) {
+                             uint64_t keys_count, uint32_t *response_size,
+                             char **response) {
   struct WorkerStats summary;
   char buf[MAX_REQUEST_SIZE];
   int bytes_written = 0;
 
   worker_stats_merge(workers_stats, NUM_WORKERS, &summary);
 
-  bytes_written = snprintf(
-      buf, MAX_REQUEST_SIZE, "PUTS=%lu DELS=%lu GETS=%lu TAKES=%lu STATS=%lu",
-      summary.put_count, summary.del_count, summary.get_count,
-      summary.take_count, summary.stats_count);
+  bytes_written =
+      snprintf(buf, MAX_REQUEST_SIZE,
+               "PUTS=%lu DELS=%lu GETS=%lu TAKES=%lu STATS=%lu KEYS=%lu",
+               summary.put_count, summary.del_count, summary.get_count,
+               summary.take_count, summary.stats_count, keys_count);
 
   char *duplicate = strdup(buf);
   if (duplicate == NULL) {
@@ -192,7 +194,8 @@ static void handle_client(struct ClientEpollEventData *event_data,
     // Return OK along with various statistics about the usage of the cache,
     // namely: number of PUTs, number of DELs, number of GETs, number of TAKEs,
     // number of STATSs, number of KEYs (i.e. key-value pairs) stored.
-    generate_stats_response(workers_stats, &response_command.arg1_size,
+    generate_stats_response(workers_stats, hashtable_key_count(hashtable),
+                            &response_command.arg1_size,
                             &response_command.arg1);
     response_command.type = BT_OK;
 

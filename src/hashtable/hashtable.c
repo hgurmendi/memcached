@@ -4,7 +4,20 @@
 
 #include "hashtable.h"
 
-/* Allocates all the resources necessary for a hash table with `size` buckets.
+/* Returns the number of unique keys present in the hash table.
+ */
+uint64_t hashtable_key_count(struct HashTable *hashtable) {
+  uint64_t count = 0;
+
+  for (int i = 0; i < hashtable->buckets_size; i++) {
+    count += hashtable->buckets[i].key_count;
+  }
+
+  return count;
+}
+
+/* Allocates all the resources necessary for a hash table with `size`
+ * buckets.
  */
 struct HashTable *hashtable_create(uint32_t buckets_size, HashFunction hash) {
   struct HashTable *hashtable = calloc(1, sizeof(struct HashTable));
@@ -69,6 +82,7 @@ int hashtable_insert(struct HashTable *hashtable, uint32_t key_size, char *key,
   if (current_node == NULL) {
     bucket->node = node_create(key_size, key, value_size, value);
 
+    bucket->key_count += 1;
     pthread_mutex_unlock(&(bucket->lock));
     return HT_NOTFOUND;
   }
@@ -99,6 +113,7 @@ int hashtable_insert(struct HashTable *hashtable, uint32_t key_size, char *key,
   // The key doesn't exist in the bucket, add it after the last node.
   last_node->next = node_create(key_size, key, value_size, value);
 
+  bucket->key_count += 1;
   pthread_mutex_unlock(&(bucket->lock));
   return HT_NOTFOUND;
 }
@@ -136,6 +151,8 @@ int hashtable_remove(struct HashTable *hashtable, uint32_t key_size,
         previous_node->next = current_node->next;
       }
       node_destroy(current_node);
+
+      bucket->key_count -= 1;
       pthread_mutex_unlock(&(bucket->lock));
       return HT_FOUND;
     }
@@ -248,6 +265,7 @@ int hashtable_take(struct HashTable *hashtable, uint32_t key_size, char *key,
       current_node->value = NULL;
       node_destroy(current_node);
 
+      bucket->key_count -= 1;
       pthread_mutex_unlock(&(bucket->lock));
       return HT_FOUND;
     }
@@ -294,7 +312,7 @@ void hashtable_print(struct HashTable *hashtable) {
   printf("=====================\n");
   for (int i = 0; i < hashtable->buckets_size; i++) {
     bucket = &(hashtable->buckets[i]);
-    printf("%03d | ", i);
+    printf("%04d [%03ld] | ", i, bucket->key_count);
     hashtable_print_bucket_nodes(bucket->node);
   }
   printf("=====================\n");

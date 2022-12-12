@@ -16,6 +16,7 @@ struct BucketNode {
 struct Bucket {
   struct BucketNode *node;
   pthread_mutex_t lock;
+  uint64_t key_count;
 };
 
 /* Creates a bucket node with the given key and value (and its respective
