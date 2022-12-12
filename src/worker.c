@@ -26,96 +26,6 @@ static void close_client(struct ClientEpollEventData *event_data) {
   free(event_data);
 }
 
-/* Responds to a client interacting through the binary protocol. The response is
- * encoded in a Command structure, where the command's type is the first token
- * of the text response and any (optional) arguments are stored in the `arg1`
- * member. Returns -1 if there was an error or 0 if it's all right.
- *
- */
-static int respond_binary_to_client(struct ClientEpollEventData *event_data,
-                                    struct Command *response_command) {
-  char response_code;
-  int status;
-
-  // These are the only valid options for the binary client.
-  if (response_command->type != BT_EINVAL || response_command->type != BT_OK ||
-      response_command->type != BT_ENOTFOUND) {
-    return -1;
-  }
-
-  status = send(event_data->fd, &response_code, 1, 0);
-  if (status < 0) {
-    perror("Error sending data to binary client");
-    return -1;
-  }
-
-  if (response_command->arg1 == NULL) {
-    return 0;
-  }
-
-  uint32_t marshalled_size = htonl(response_command->arg1_size);
-  status = send(event_data->fd, &marshalled_size, sizeof(uint32_t), 0);
-  if (status < 0) {
-    perror("Error sending data to binary client");
-    return -1;
-  }
-
-  status = send(event_data->fd, response_command->arg1,
-                response_command->arg1_size, 0);
-  if (status < 0) {
-    perror("Error sending data to binary client");
-    return -1;
-  }
-
-  return 0;
-}
-
-/* Responds to a client interacting through the text protocol. The response is
- * encoded in a Command structure, where the command's type is the first token
- * of the text response and any (optional) arguments are stored in the `arg1`
- * member. Returns -1 if there was an error or 0 if it's all right.
- */
-static int respond_text_to_client(struct ClientEpollEventData *event_data,
-                                  struct Command *response_command) {
-  int status;
-  char write_buf[MAX_REQUEST_SIZE];
-  int bytes_written = 0;
-
-  switch (response_command->type) {
-  case BT_EBINARY:
-    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "EBINARY\n");
-    break;
-  case BT_EINVAL:
-    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "EINVAL\n");
-    break;
-  case BT_OK:
-    // Write the first argument of the command as the "argument" of the OK
-    // response.
-    if (response_command->arg1 != NULL) {
-      bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "OK %s\n",
-                               response_command->arg1);
-    } else {
-      bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "OK\n");
-    }
-    break;
-  case BT_ENOTFOUND:
-    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "ENOTFOUND\n");
-    break;
-  default:
-    printf("Encountered unknown command type whem sending data to client...\n");
-    return -1;
-    break;
-  }
-
-  status = send(event_data->fd, write_buf, bytes_written, 0);
-  if (status < 0) {
-    perror("Error sending data to text client");
-    return -1;
-  }
-
-  return 0;
-}
-
 static char *get_hashtable_ret_string(int ret) {
   switch (ret) {
   case HT_FOUND:
@@ -265,10 +175,10 @@ static void handle_client(struct ClientEpollEventData *event_data,
 
   if (event_data->connection_type == TEXT) {
     printf("Responding text data\n");
-    respond_text_to_client(event_data, &response_command);
+    write_command_to_text_client(event_data->fd, &response_command);
   } else {
     printf("Responding binary data\n");
-    respond_binary_to_client(event_data, &response_command);
+    write_command_to_binary_client(event_data->fd, &response_command);
   }
 
   // At this point the data should've been sent to the client, so we can safely
