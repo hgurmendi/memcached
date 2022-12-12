@@ -142,9 +142,9 @@ static void handle_client(struct ClientEpollEventData *event_data,
   command_initialize(&response_command);
 
   if (event_data->connection_type == TEXT) {
-    parse_text(event_data->fd, &received_command);
+    read_command_from_text_client(event_data->fd, &received_command);
   } else {
-    parse_binary(event_data->fd, &received_command);
+    read_command_from_binary_client(event_data->fd, &received_command);
   }
 
   command_print(&received_command);

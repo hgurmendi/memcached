@@ -3,11 +3,11 @@
 
 #include "command.h"
 
-/* Parses the data read from a client that connected through the binary protocol
- * port and saves the read data in the given Command struct.
- * It's responsibility of the consumer to free the pointers inside the given
- * command, if any of them is not NULL.
+/* Reads a command from a client that is communicating using the binary
+ * protocol.
+ * It's responsibility of the consumer to free the pointers inside the
+ * given command, if any of them is not NULL.
  */
-void parse_binary(int client_fd, struct Command *command);
+void read_command_from_binary_client(int client_fd, struct Command *command);
 
 #endif

@@ -48,12 +48,11 @@ static bool tokenEquals(const char *token, const char *command) {
   return 0 == strncmp(command, token, strnlen(command, 10));
 }
 
-/* Parses the data read from a client that connected through the text protocol
- * port and saves the read data in the given Command struct.
- * It's responsibility of the consumer to free the pointers inside the given
- * command, if any of them is not NULL.
+/* Reads a command from a client that is communicating using the text protocol.
+ * It's responsibility of the consumer to free the pointers inside the
+ * given command, if any of them is not NULL.
  */
-void parse_text(int client_fd, struct Command *command) {
+void read_command_from_text_client(int client_fd, struct Command *command) {
   // TODO: Figure out why using this kind of buffer definition breaks
   // everything.
   //   char buf[MAX_REQUEST_SIZE + 1];
