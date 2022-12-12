@@ -9,6 +9,7 @@
 #include "common.h"
 #include "dispatcher.h"
 #include "epoll.h"
+#include "parameters.h"
 #include "sockets.h"
 #include "worker.h"
 
@@ -116,7 +117,7 @@ void dispatcher_loop(struct DispatcherState *dispatcher_state) {
  * incoming connections and accepts them.
  */
 static void
-initialize_dispatcher_epoll(struct DispatcherState *dispatcher_state) {
+dispatcher_initialize_epoll(struct DispatcherState *dispatcher_state) {
   int status;
   struct epoll_event event;
 
@@ -150,17 +151,19 @@ initialize_dispatcher_epoll(struct DispatcherState *dispatcher_state) {
 
 /* Initializes the all the resources needed by the Dispatcher.
  */
-void initialize_dispatcher(struct DispatcherState *dispatcher_state,
+void dispatcher_initialize(struct DispatcherState *dispatcher_state,
                            int num_workers, char *text_port,
                            char *binary_port) {
   dispatcher_state->num_workers = num_workers;
   dispatcher_state->next_worker = 0;
+
   dispatcher_state->worker_threads =
       calloc(dispatcher_state->num_workers, sizeof(pthread_t));
   if (dispatcher_state->worker_threads == NULL) {
     perror("callock worker_threads");
     abort();
   }
+
   dispatcher_state->worker_epoll_fds =
       calloc(dispatcher_state->num_workers, sizeof(int));
   if (dispatcher_state->worker_epoll_fds == NULL) {
@@ -168,24 +171,33 @@ void initialize_dispatcher(struct DispatcherState *dispatcher_state,
     abort();
   }
 
+  dispatcher_state->hashtable =
+      hashtable_create(HASH_TABLE_BUCKETS_SIZE, HASH_TABLE_HASH_FUNCTION);
+  if (dispatcher_state->hashtable == NULL) {
+    perror("malloc hashtable");
+    abort();
+  }
+
   initialize_workers(num_workers, dispatcher_state->worker_threads,
-                     dispatcher_state->worker_epoll_fds);
+                     dispatcher_state->worker_epoll_fds,
+                     dispatcher_state->hashtable);
 
   dispatcher_state->text_fd = create_listen_socket(text_port);
   dispatcher_state->binary_fd = create_listen_socket(binary_port);
 
-  initialize_dispatcher_epoll(dispatcher_state);
+  dispatcher_initialize_epoll(dispatcher_state);
 }
 
 /* Destroys the dispatcher state and its allocated resources.
  * NOTE: the memory allocated for the arguments of the workers should be freed
  * by the workers themselves.
  */
-void destroy_dispatcher(struct DispatcherState *dispatcher_state) {
+void dispatcher_destroy(struct DispatcherState *dispatcher_state) {
   close(dispatcher_state->epoll_fd);
   close(dispatcher_state->text_fd);
   close(dispatcher_state->binary_fd);
   free(dispatcher_state->worker_threads);
   free(dispatcher_state->worker_epoll_fds);
+  hashtable_destroy(dispatcher_state->hashtable);
   free(dispatcher_state);
 }

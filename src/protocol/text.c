@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -6,7 +7,7 @@
 #include <sys/socket.h>
 
 #include "command.h"
-#include "text_parser.h"
+#include "text.h"
 
 /* Reads an argument from the text client according to the text protocol
  * specification.
@@ -47,12 +48,11 @@ static bool tokenEquals(const char *token, const char *command) {
   return 0 == strncmp(command, token, strnlen(command, 10));
 }
 
-/* Parses the data read from a client that connected through the text protocol
- * port and saves the read data in the given Command struct.
- * It's responsibility of the consumer to free the pointers inside the given
- * command, if any of them is not NULL.
+/* Reads a command from a client that is communicating using the text protocol.
+ * It's responsibility of the consumer to free the pointers inside the
+ * given command, if any of them is not NULL.
  */
-void parse_text(int client_fd, struct Command *command) {
+void read_command_from_text_client(int client_fd, struct Command *command) {
   // TODO: Figure out why using this kind of buffer definition breaks
   // everything.
   //   char buf[MAX_REQUEST_SIZE + 1];
@@ -131,4 +131,64 @@ void parse_text(int client_fd, struct Command *command) {
   }
 
   free(tofree);
+}
+
+/* Writes a command to a client that is communicating using the text protocol.
+ * Each response of the server is encoded in a Command structure, where the
+ * command's `type` member determines the first token of the response the
+ * command's `arg1` member (along with `arg1_size`) determine an optional
+ * argument.
+ * Returns -1 if something wrong happens, 0 otherwise.
+ */
+int write_command_to_text_client(int client_fd,
+                                 struct Command *response_command) {
+  int status;
+  char write_buf[MAX_REQUEST_SIZE];
+  int bytes_written = 0;
+
+  switch (response_command->type) {
+  case BT_EBINARY:
+    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "EBINARY\n");
+    break;
+  case BT_EINVAL:
+    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "EINVAL\n");
+    break;
+  case BT_OK:
+    // Write the first argument of the command as the "argument" of the OK
+    // response.
+    if (response_command->arg1 != NULL) {
+      bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "OK %s\n",
+                               response_command->arg1);
+    } else {
+      bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "OK\n");
+    }
+    break;
+  case BT_ENOTFOUND:
+    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "ENOTFOUND\n");
+    break;
+  default:
+    printf("Encountered unknown command type whem sending data to client...\n");
+    return -1;
+    break;
+  }
+
+  status = send(client_fd, write_buf, bytes_written, 0);
+  if (status < 0) {
+    perror("Error sending data to text client");
+    return -1;
+  }
+
+  return 0;
+}
+
+/* true if the given char array is representable as text, false otherwise.
+ */
+bool is_text_representable(uint32_t size, char *arr) {
+  for (int i = 0; i < size - 1; i++) {
+    if (!isprint(arr[i])) {
+      return false;
+    }
+  }
+
+  return arr[size - 1] == '\0';
 }

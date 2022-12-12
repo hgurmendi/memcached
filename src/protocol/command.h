@@ -1,5 +1,5 @@
-#ifndef __COMMAND_H__
-#define __COMMAND_H__
+#ifndef __PROTOCOL_COMMAND_H__
+#define __PROTOCOL_COMMAND_H__
 
 #include <stdint.h>
 
