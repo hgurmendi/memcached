@@ -37,11 +37,11 @@ void queue_remove_node(struct Queue *queue, struct DListNode *node);
 /* Prints the queue to stdout.
  * Elements in the back are to the left, elements in the front are to the right.
  */
-void queue_print(struct Queue *queue);
+void queue_print(struct Queue *queue, void (*print_queue_node)(void *));
 
 /* Prints the queue to stdout in reverse order.
  * Elements in the front are to the left, elements in the back are to the right.
  */
-void queue_print_reverse(struct Queue *queue);
+void queue_print_reverse(struct Queue *queue, void (*print_queue_node)(void *));
 
 #endif

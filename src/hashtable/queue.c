@@ -85,7 +85,7 @@ void queue_remove_node(struct Queue *queue, struct DListNode *node) {
 /* Prints the queue to stdout.
  * Elements in the back are to the left, elements in the front are to the right.
  */
-void queue_print(struct Queue *queue) {
+void queue_print(struct Queue *queue, void (*print_queue_node)(void *)) {
   struct DListNode *current_node = queue->back;
 
   if (current_node == NULL) {
@@ -95,8 +95,8 @@ void queue_print(struct Queue *queue) {
 
   printf("X <-> ");
   while (current_node != NULL) {
-    char *node_value = (char *)current_node->value;
-    printf("%s <-> ", node_value);
+    print_queue_node(current_node->value);
+    printf(" <-> ");
     current_node = current_node->next;
   }
   printf("X\n");
@@ -105,7 +105,8 @@ void queue_print(struct Queue *queue) {
 /* Prints the queue to stdout in reverse order.
  * Elements in the front are to the left, elements in the back are to the right.
  */
-void queue_print_reverse(struct Queue *queue) {
+void queue_print_reverse(struct Queue *queue,
+                         void (*print_queue_node)(void *)) {
   struct DListNode *current_node = queue->front;
 
   if (current_node == NULL) {
@@ -115,8 +116,8 @@ void queue_print_reverse(struct Queue *queue) {
 
   printf("X <-> ");
   while (current_node != NULL) {
-    char *node_value = (char *)current_node->value;
-    printf("%s <-> ", node_value);
+    print_queue_node(current_node->value);
+    printf(" <-> ");
     current_node = current_node->prev;
   }
   printf("X\n");

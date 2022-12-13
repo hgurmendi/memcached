@@ -68,6 +68,11 @@ void generate_stats_response(struct WorkerStats *workers_stats, int num_workers,
   *response_size = bytes_written + 1;
 }
 
+static void print_something(void *value) {
+  struct BucketNode *node = (struct BucketNode *)value;
+  printf("%s", node->key);
+}
+
 /* Handles incoming data from a client connection. If the client closes the
  * connection, we close the file descriptor and epoll manages it accordingly.
  */
@@ -208,6 +213,12 @@ static void handle_client(struct ClientEpollEventData *event_data,
     }
 
     stats->stats_count += 1;
+
+    hashtable_print(hashtable);
+
+    printf("LRU queue:\n");
+    queue_print(hashtable->lru_queue, print_something);
+
     break;
   case BT_EINVAL:
     // Error parsing the request, just return EINVAL.
