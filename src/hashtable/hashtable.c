@@ -2,7 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../wrapped_free.h"
 #include "hashtable.h"
+
+uint64_t wrapped_malloc_mem = 0;
 
 /* Returns the number of unique keys present in the hash table.
  */
@@ -108,8 +111,8 @@ int hashtable_insert(struct HashTable *hashtable, uint32_t key_size, char *key,
   while (current_node != NULL) {
     // The key exists in the bucket, just replace it.
     if (keys_equal(key_size, key, current_node->key_size, current_node->key)) {
-      free(current_node->key);
-      free(current_node->value);
+      wrapped_free(current_node->key, current_node->key_size);
+      wrapped_free(current_node->value, current_node->value_size);
 
       current_node->key_size = key_size;
       current_node->key = key;
@@ -454,6 +457,12 @@ void *hashtable_attempt_malloc(struct HashTable *hashtable, size_t size) {
       }
     }
   }
+
+  wrapped_malloc_mem += size;
+
+  printf("attempt_malloc_stats\n");
+  printf("Total malloc memory: %lu\n", wrapped_malloc_mem);
+  printf("Total free memory: %lu\n", wrapped_free_mem);
 
   return ret;
 }

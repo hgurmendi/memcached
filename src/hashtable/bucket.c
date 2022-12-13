@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "../wrapped_free.h"
+
 /* Creates a new bucket node with the given key and value (and its respective
  * sizes).
  */
@@ -33,12 +35,12 @@ struct BucketNode *node_create(uint32_t key_size, char *key,
  */
 void node_destroy(struct BucketNode *node) {
   if (node->key != NULL) {
-    free(node->key);
+    wrapped_free(node->key, node->key_size);
   }
   if (node->value != NULL) {
-    free(node->value);
+    wrapped_free(node->value, node->value_size);
   }
-  free(node);
+  wrapped_free(node, sizeof(struct BucketNode *));
 }
 
 /* Initializes a bucket.

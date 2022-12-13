@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 
 #include "../hashtable/hashtable.h"
+#include "../wrapped_free.h"
 #include "command.h"
 #include "text.h"
 
@@ -71,7 +72,7 @@ void read_command_from_text_client(struct HashTable *hashtable, int client_fd,
   // newline is found and parse once we find a newline...
   if (bytes_read > MAX_REQUEST_SIZE || bytes_read < 0) {
     command->type = BT_EINVAL;
-    free(tofree);
+    wrapped_free(tofree, (MAX_REQUEST_SIZE + 1) * sizeof(char));
     return;
   }
 
@@ -84,7 +85,7 @@ void read_command_from_text_client(struct HashTable *hashtable, int client_fd,
   // character in it
   if (newline == NULL) {
     command->type = BT_EINVAL;
-    free(tofree);
+    wrapped_free(tofree, (MAX_REQUEST_SIZE + 1) * sizeof(char));
     return;
   }
 
@@ -135,7 +136,7 @@ void read_command_from_text_client(struct HashTable *hashtable, int client_fd,
     command->type = BT_EINVAL;
   }
 
-  free(tofree);
+  wrapped_free(tofree, (MAX_REQUEST_SIZE + 1) * sizeof(char));
 }
 
 /* Writes a command to a client that is communicating using the text protocol.

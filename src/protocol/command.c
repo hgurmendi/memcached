@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "../wrapped_free.h"
 #include "command.h"
 
 /* Returns a string representation of the binary type.
@@ -38,13 +39,13 @@ char *binary_type_str(int binary_type) {
  */
 void command_destroy_args(struct Command *command) {
   if (command->arg1 != NULL) {
-    free(command->arg1);
+    wrapped_free(command->arg1, command->arg1_size);
     command->arg1 = NULL;
     command->arg1_size = 0;
   }
 
   if (command->arg2 != NULL) {
-    free(command->arg2);
+    wrapped_free(command->arg2, command->arg2_size);
     command->arg2 = NULL;
     command->arg2_size = 0;
   }
