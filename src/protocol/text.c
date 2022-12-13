@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/socket.h>
 
+#include "../hashtable/hashtable.h"
 #include "command.h"
 #include "text.h"
 
@@ -17,7 +18,8 @@
  * buffer, false otherwise.
  * Mutates the char bufer pointed at by buf because we use strdup.
  */
-static bool read_argument_from_text_client(char **buf, char **arg,
+static bool read_argument_from_text_client(struct HashTable *hashtable,
+                                           char **buf, char **arg,
                                            uint32_t *arg_size) {
   if (*buf == NULL) {
     // We ran out of space-separated tokens in the text buffer, so we can't read
@@ -32,7 +34,7 @@ static bool read_argument_from_text_client(char **buf, char **arg,
     return false;
   }
 
-  *arg = malloc(*arg_size * sizeof(char));
+  *arg = hashtable_attempt_malloc(hashtable, *arg_size * sizeof(char));
   if (*arg == NULL) {
     perror("Error allocating memory for text client argument");
     return false;
@@ -52,11 +54,14 @@ static bool tokenEquals(const char *token, const char *command) {
  * It's responsibility of the consumer to free the pointers inside the
  * given command, if any of them is not NULL.
  */
-void read_command_from_text_client(int client_fd, struct Command *command) {
+void read_command_from_text_client(struct HashTable *hashtable, int client_fd,
+                                   struct Command *command) {
   // TODO: Figure out why using this kind of buffer definition breaks
   // everything.
   //   char buf[MAX_REQUEST_SIZE + 1];
-  char *buf = malloc((MAX_REQUEST_SIZE + 1) * sizeof(char));
+  char *buf = hashtable_attempt_malloc(hashtable,
+                                       (MAX_REQUEST_SIZE + 1) * sizeof(char));
+  // TODO: Check result of attempt_malloc
   char *tofree = buf;
   int bytes_read = recv(client_fd, buf, MAX_REQUEST_SIZE + 1, 0);
 
@@ -91,9 +96,9 @@ void read_command_from_text_client(int client_fd, struct Command *command) {
   token = strsep(&buf, " ");
 
   if (tokenEquals(token, "PUT")) {
-    if (read_argument_from_text_client(&buf, &command->arg1,
+    if (read_argument_from_text_client(hashtable, &buf, &command->arg1,
                                        &command->arg1_size) &&
-        read_argument_from_text_client(&buf, &command->arg2,
+        read_argument_from_text_client(hashtable, &buf, &command->arg2,
                                        &command->arg2_size)) {
       command->type = BT_PUT;
     } else {
@@ -101,7 +106,7 @@ void read_command_from_text_client(int client_fd, struct Command *command) {
       command_destroy_args(command);
     }
   } else if (tokenEquals(token, "DEL")) {
-    if (read_argument_from_text_client(&buf, &command->arg1,
+    if (read_argument_from_text_client(hashtable, &buf, &command->arg1,
                                        &command->arg1_size)) {
       command->type = BT_DEL;
     } else {
@@ -109,7 +114,7 @@ void read_command_from_text_client(int client_fd, struct Command *command) {
       command_destroy_args(command);
     }
   } else if (tokenEquals(token, "GET")) {
-    if (read_argument_from_text_client(&buf, &command->arg1,
+    if (read_argument_from_text_client(hashtable, &buf, &command->arg1,
                                        &command->arg1_size)) {
       command->type = BT_GET;
     } else {
@@ -117,7 +122,7 @@ void read_command_from_text_client(int client_fd, struct Command *command) {
       command_destroy_args(command);
     }
   } else if (tokenEquals(token, "TAKE")) {
-    if (read_argument_from_text_client(&buf, &command->arg1,
+    if (read_argument_from_text_client(hashtable, &buf, &command->arg1,
                                        &command->arg1_size)) {
       command->type = BT_TAKE;
     } else {

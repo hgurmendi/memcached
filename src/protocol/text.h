@@ -1,6 +1,7 @@
 #ifndef __PROTOCOL_TEXT_H__
 #define __PROTOCOL_TEXT_H__
 
+#include "../hashtable/hashtable.h"
 #include "command.h"
 
 #define MAX_REQUEST_SIZE 2048
@@ -9,7 +10,8 @@
  * It's responsibility of the consumer to free the pointers inside the
  * given command, if any of them is not NULL.
  */
-void read_command_from_text_client(int client_fd, struct Command *command);
+void read_command_from_text_client(struct HashTable *hashtable, int client_fd,
+                                   struct Command *command);
 
 /* Writes a command to a client that is communicating using the text protocol.
  * Each response of the server is encoded in a Command structure, where the

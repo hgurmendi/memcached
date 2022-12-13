@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 
+#include "../hashtable/hashtable.h"
 #include "binary.h"
 
 /* Reads an argument from a binary client according to the binary protocol
@@ -14,7 +15,8 @@
  * Returns true if it was able to successfully read the argument from the
  * buffer, false otherwise.
  */
-static bool read_argument_from_binary_client(int client_fd, uint32_t *arg_size,
+static bool read_argument_from_binary_client(struct HashTable *hashtable,
+                                             int client_fd, uint32_t *arg_size,
                                              char **arg) {
   int bytes_read;
 
@@ -25,7 +27,7 @@ static bool read_argument_from_binary_client(int client_fd, uint32_t *arg_size,
   }
 
   *arg_size = ntohl(*arg_size);
-  *arg = malloc(*arg_size * sizeof(char));
+  *arg = hashtable_attempt_malloc(hashtable, *arg_size * sizeof(char));
   if (*arg == NULL) {
     perror("Error allocating memory for binary client argument");
     return false;
@@ -45,7 +47,8 @@ static bool read_argument_from_binary_client(int client_fd, uint32_t *arg_size,
  * It's responsibility of the consumer to free the pointers inside the
  * given command, if any of them is not NULL.
  */
-void read_command_from_binary_client(int client_fd, struct Command *command) {
+void read_command_from_binary_client(struct HashTable *hashtable, int client_fd,
+                                     struct Command *command) {
   int bytes_read = recv(client_fd, &command->type, 1, 0);
   if (bytes_read < 0) {
     perror("Error reading command type from binary client");
@@ -55,31 +58,31 @@ void read_command_from_binary_client(int client_fd, struct Command *command) {
 
   switch (command->type) {
   case BT_PUT:
-    if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
-                                          &command->arg1) ||
-        !read_argument_from_binary_client(client_fd, &command->arg2_size,
-                                          &command->arg2)) {
+    if (!read_argument_from_binary_client(
+            hashtable, client_fd, &command->arg1_size, &command->arg1) ||
+        !read_argument_from_binary_client(
+            hashtable, client_fd, &command->arg2_size, &command->arg2)) {
       command->type = BT_EINVAL;
       command_destroy_args(command);
     }
     break;
   case BT_DEL:
-    if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
-                                          &command->arg1)) {
+    if (!read_argument_from_binary_client(
+            hashtable, client_fd, &command->arg1_size, &command->arg1)) {
       command->type = BT_EINVAL;
       command_destroy_args(command);
     }
     break;
   case BT_GET:
-    if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
-                                          &command->arg1)) {
+    if (!read_argument_from_binary_client(
+            hashtable, client_fd, &command->arg1_size, &command->arg1)) {
       command->type = BT_EINVAL;
       command_destroy_args(command);
     }
     break;
   case BT_TAKE:
-    if (!read_argument_from_binary_client(client_fd, &command->arg1_size,
-                                          &command->arg1)) {
+    if (!read_argument_from_binary_client(
+            hashtable, client_fd, &command->arg1_size, &command->arg1)) {
       command->type = BT_EINVAL;
       command_destroy_args(command);
     }
