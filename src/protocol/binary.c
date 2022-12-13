@@ -25,7 +25,7 @@ static bool read_argument_from_binary_client(int client_fd, uint32_t *arg_size,
   }
 
   *arg_size = ntohl(*arg_size);
-  *arg = calloc(*arg_size, sizeof(char));
+  *arg = malloc(*arg_size * sizeof(char));
   if (*arg == NULL) {
     perror("Error allocating memory for binary client argument");
     return false;

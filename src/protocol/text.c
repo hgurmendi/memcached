@@ -32,7 +32,7 @@ static bool read_argument_from_text_client(char **buf, char **arg,
     return false;
   }
 
-  *arg = calloc(*arg_size, sizeof(char));
+  *arg = malloc(*arg_size * sizeof(char));
   if (*arg == NULL) {
     perror("Error allocating memory for text client argument");
     return false;
@@ -56,7 +56,7 @@ void read_command_from_text_client(int client_fd, struct Command *command) {
   // TODO: Figure out why using this kind of buffer definition breaks
   // everything.
   //   char buf[MAX_REQUEST_SIZE + 1];
-  char *buf = calloc(MAX_REQUEST_SIZE + 1, sizeof(char));
+  char *buf = malloc((MAX_REQUEST_SIZE + 1) * sizeof(char));
   char *tofree = buf;
   int bytes_read = recv(client_fd, buf, MAX_REQUEST_SIZE + 1, 0);
 
