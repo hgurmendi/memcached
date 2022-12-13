@@ -423,6 +423,41 @@ bool hashtable_evict(struct HashTable *hashtable) {
   return eviction_successful;
 }
 
+#define MAX_ATTEMPTS 15
+/* Attempts to allocate `size` bytes of dynamic memory, evicting key-value pairs
+ * until it's successful or an error happens.
+ * Returns a non-NULL pointer when successful or NULL when an error happens.
+ */
+void *hashtable_attempt_malloc(struct HashTable *hashtable, size_t size) {
+  void *ret = NULL;
+  bool eviction_successful = false;
+  unsigned int attempts = 0;
+
+  while (ret == NULL) {
+    attempts += 1;
+
+    if (attempts > MAX_ATTEMPTS) {
+      printf("********** MAX ATTEMPTS REACHED FOR ALLOCATION\n");
+      return NULL;
+    }
+
+    printf("***********Attempt %d at trying to get %lu bytes\n", attempts,
+           size);
+    ret = malloc(size);
+    if (ret == NULL) {
+      printf("*********** Going to evict something!!\n");
+      eviction_successful = hashtable_evict(hashtable);
+      if (!eviction_successful) {
+        printf("*****************We fucked up, we cannot free "
+               "memory\n");
+        return NULL;
+      }
+    }
+  }
+
+  return ret;
+}
+
 /* Prints the buckets of the given hash table to stdout.
  * Assumes that the keys and values are strings.
  */

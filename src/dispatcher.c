@@ -202,5 +202,4 @@ void dispatcher_destroy(struct DispatcherState *dispatcher_state) {
   free(dispatcher_state->worker_threads);
   free(dispatcher_state->worker_epoll_fds);
   hashtable_destroy(dispatcher_state->hashtable);
-  free(dispatcher_state);
 }

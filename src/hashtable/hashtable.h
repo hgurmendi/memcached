@@ -74,6 +74,9 @@ int hashtable_take(struct HashTable *hashtable, uint32_t key_size, char *key,
  */
 bool hashtable_evict(struct HashTable *hashtable);
 
+/* Tries to a*/
+void *hashtable_attempt_malloc(struct HashTable *hashtable, size_t size);
+
 /* Frees up the memory used by the given hash table.
  * Frees the memory of all the keys and values.
  */

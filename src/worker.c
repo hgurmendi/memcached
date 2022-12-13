@@ -10,7 +10,6 @@
 
 #include "epoll.h"
 #include "hashtable/hashtable.h"
-#include "parameters.h"
 #include "protocol/binary.h"
 #include "protocol/command.h"
 #include "protocol/text.h"
