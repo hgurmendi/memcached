@@ -224,6 +224,13 @@ int hashtable_get(struct HashTable *hashtable, uint32_t key_size, char *key,
     // The key exists in the bucket, return the associated value if we can
     // allocate enough memory for a copy of it.
     if (keys_equal(key_size, key, current_node->key_size, current_node->key)) {
+
+      // Re-add it to the LRU queue.
+      pthread_mutex_lock(&hashtable->lru_queue_lock);
+      queue_remove_node(hashtable->lru_queue, &bucket->node->lru_queue_node);
+      queue_enqueue(hashtable->lru_queue, &bucket->node->lru_queue_node);
+      pthread_mutex_unlock(&hashtable->lru_queue_lock);
+
       char *value_copy = (char *)malloc(current_node->value_size);
       if (value_copy == NULL) {
         pthread_mutex_unlock(&(bucket->lock));
