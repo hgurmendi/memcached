@@ -357,7 +357,7 @@ static void hashtable_print_bucket_nodes(struct BucketNode *bucket_node) {
  */
 bool hashtable_evict(struct HashTable *hashtable) {
   struct Queue *queue = hashtable->lru_queue;
-  bool performed_eviction = false;
+  bool eviction_successful = false;
 
   pthread_mutex_lock(&hashtable->lru_queue_lock);
 
@@ -407,17 +407,20 @@ bool hashtable_evict(struct HashTable *hashtable) {
       // and value memory from the shared cache.
       node_destroy(victim_bucket_node);
 
+      // Also update the number of keys in the bucket!
+      victim_bucket->key_count -= 1;
+
       // We're finally done!
       pthread_mutex_unlock(&victim_bucket->lock);
 
-      performed_eviction = true;
+      eviction_successful = true;
       break;
     }
   }
 
   pthread_mutex_unlock(&hashtable->lru_queue_lock);
 
-  return performed_eviction;
+  return eviction_successful;
 }
 
 /* Prints the buckets of the given hash table to stdout.

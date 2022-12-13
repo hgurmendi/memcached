@@ -165,6 +165,18 @@ static void handle_client(struct ClientEpollEventData *event_data,
     stats->get_count += 1;
     break;
   case BT_TAKE:
+    // for testing eviction!
+    if (0 ==
+        strncmp(received_command.arg1, "EVICT", received_command.arg1_size)) {
+      // evit the shit out.
+      int eviction_successful = hashtable_evict(hashtable);
+      printf("Eviction result: %s\n",
+             eviction_successful ? "Success!" : "Failed!");
+      break;
+    }
+
+    // / for testing eviction
+
     // Remove the key-value pair corresponding to the key if it exists and
     // return OK along with the value, otherwise return ENOTFOUND.
     // @TODO: Here we might want to also signal that the value was stored using
