@@ -118,8 +118,8 @@ int hashtable_insert(struct HashTable *hashtable, uint32_t key_size, char *key,
 
       // Re-add it to the LRU queue.
       pthread_mutex_lock(&hashtable->lru_queue_lock);
-      queue_remove_node(hashtable->lru_queue, &bucket->node->lru_queue_node);
-      queue_enqueue(hashtable->lru_queue, &bucket->node->lru_queue_node);
+      queue_remove_node(hashtable->lru_queue, &current_node->lru_queue_node);
+      queue_enqueue(hashtable->lru_queue, &current_node->lru_queue_node);
       pthread_mutex_unlock(&hashtable->lru_queue_lock);
 
       pthread_mutex_unlock(&(bucket->lock));
@@ -175,6 +175,12 @@ int hashtable_remove(struct HashTable *hashtable, uint32_t key_size,
       } else {
         previous_node->next = current_node->next;
       }
+
+      // Remove it from the LRU queue
+      pthread_mutex_lock(&hashtable->lru_queue_lock);
+      queue_remove_node(hashtable->lru_queue, &current_node->lru_queue_node);
+      pthread_mutex_unlock(&hashtable->lru_queue_lock);
+
       node_destroy(current_node);
 
       bucket->key_count -= 1;
@@ -227,8 +233,8 @@ int hashtable_get(struct HashTable *hashtable, uint32_t key_size, char *key,
 
       // Re-add it to the LRU queue.
       pthread_mutex_lock(&hashtable->lru_queue_lock);
-      queue_remove_node(hashtable->lru_queue, &bucket->node->lru_queue_node);
-      queue_enqueue(hashtable->lru_queue, &bucket->node->lru_queue_node);
+      queue_remove_node(hashtable->lru_queue, &current_node->lru_queue_node);
+      queue_enqueue(hashtable->lru_queue, &current_node->lru_queue_node);
       pthread_mutex_unlock(&hashtable->lru_queue_lock);
 
       char *value_copy = (char *)malloc(current_node->value_size);
@@ -290,6 +296,12 @@ int hashtable_take(struct HashTable *hashtable, uint32_t key_size, char *key,
       } else {
         previous_node->next = current_node->next;
       }
+
+      // Remove it from the LRU queue
+      pthread_mutex_lock(&hashtable->lru_queue_lock);
+      queue_remove_node(hashtable->lru_queue, &current_node->lru_queue_node);
+      pthread_mutex_unlock(&hashtable->lru_queue_lock);
+
       *ret_value_size = current_node->value_size;
       *ret_value = current_node->value;
       // Signal that the memory with the value shouldn't be freed, it's now

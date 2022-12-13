@@ -70,14 +70,12 @@ void queue_remove_node(struct Queue *queue, struct DListNode *node) {
   if (node_prev != NULL) {
     node_prev->next = node_next;
   } else {
-    // saqué el primero.
     queue->back = node_next;
   }
 
   if (node_next != NULL) {
     node_next->prev = node_prev;
   } else {
-    // saqué el último.
     queue->front = node_prev;
   }
 
