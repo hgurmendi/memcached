@@ -16,21 +16,16 @@ int main(int argc, char *argv[]) {
   text_port = argv[1];
   binary_port = argv[2];
 
-  struct DispatcherState *dispatcher_state;
-  dispatcher_state = calloc(1, sizeof(struct DispatcherState));
-  if (dispatcher_state == NULL) {
-    perror("calloc dispatcher_state");
-    abort();
-  }
+  struct DispatcherState dispatcher_state;
 
   int num_processors = get_nprocs();
   int num_workers = num_processors > 1 ? num_processors - 1 : 1;
 
-  dispatcher_initialize(dispatcher_state, num_workers, text_port, binary_port);
+  dispatcher_initialize(&dispatcher_state, num_workers, text_port, binary_port);
 
-  dispatcher_loop(dispatcher_state);
+  dispatcher_loop(&dispatcher_state);
 
-  dispatcher_destroy(dispatcher_state);
+  dispatcher_destroy(&dispatcher_state);
 
   return EXIT_SUCCESS;
 }
