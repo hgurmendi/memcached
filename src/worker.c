@@ -309,9 +309,9 @@ void initialize_workers(int num_workers, pthread_t *worker_threads,
 
     // Prepare the arguments for each worker...
     // free responsability is of the caller
-    struct WorkerArgs *worker_args = calloc(1, sizeof(struct WorkerArgs));
+    struct WorkerArgs *worker_args = malloc(sizeof(struct WorkerArgs));
     if (worker_args == NULL) {
-      perror("calloc worker_args");
+      perror("malloc worker_args");
       abort();
     }
     snprintf(worker_args->name, sizeof(worker_args->name), "Worker %d", i);

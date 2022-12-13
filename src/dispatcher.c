@@ -157,33 +157,39 @@ void dispatcher_initialize(struct DispatcherState *dispatcher_state,
   dispatcher_state->num_workers = num_workers;
   dispatcher_state->next_worker = 0;
 
-  dispatcher_state->worker_threads =
-      calloc(dispatcher_state->num_workers, sizeof(pthread_t));
+  dispatcher_state->worker_threads = malloc(num_workers * sizeof(pthread_t));
   if (dispatcher_state->worker_threads == NULL) {
-    perror("callock worker_threads");
+    perror("malloc worker_threads");
     abort();
   }
 
-  dispatcher_state->worker_epoll_fds =
-      calloc(dispatcher_state->num_workers, sizeof(int));
+  // Initialize each pthread_t to 0, just in case.
+  // for (int i = 0; i < num_workers; i++) {
+  //   dispatcher_state->worker_threads[i] = 0;
+  // }
+
+  dispatcher_state->worker_epoll_fds = malloc(num_workers * sizeof(int));
   if (dispatcher_state->worker_epoll_fds == NULL) {
-    perror("calloc worker_epoll_fds");
+    perror("malloc worker_epoll_fds");
     abort();
   }
+
+  // Initialize each epoll fd to 0, just in case.
+  // for (int i = 0; i < dispatcher_state->num_workers; i++) {
+  //   dispatcher_state->worker_epoll_fds[i] = 0;
+  // }
 
   dispatcher_state->hashtable =
       hashtable_create(HASH_TABLE_BUCKETS_SIZE, HASH_TABLE_HASH_FUNCTION);
-  if (dispatcher_state->hashtable == NULL) {
-    perror("malloc hashtable");
-    abort();
-  }
 
   dispatcher_state->workers_stats =
-      malloc(sizeof(struct WorkerStats) * num_workers);
+      malloc(num_workers * sizeof(struct WorkerStats));
   if (dispatcher_state->workers_stats == NULL) {
     perror("malloc workers_stats");
     abort();
   }
+
+  // The worker stats structs will be initialized by each worker.
 
   initialize_workers(num_workers, dispatcher_state->worker_threads,
                      dispatcher_state->worker_epoll_fds,

@@ -17,9 +17,9 @@ int main(int argc, char *argv[]) {
   binary_port = argv[2];
 
   struct DispatcherState *dispatcher_state;
-  dispatcher_state = calloc(1, sizeof(struct DispatcherState));
+  dispatcher_state = malloc(sizeof(struct DispatcherState));
   if (dispatcher_state == NULL) {
-    perror("calloc dispatcher_state");
+    perror("malloc dispatcher_state");
     abort();
   }
 
