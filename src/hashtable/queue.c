@@ -59,6 +59,31 @@ struct DListNode *queue_dequeue(struct Queue *queue) {
   return popped_node;
 }
 
+/* Removes the given node from the queue.
+ * The `prev` and `next` members of the node will be modified.
+ * Assumes that the node belongs in the queue.
+ */
+void queue_remove_node(struct Queue *queue, struct DListNode *node) {
+  struct DListNode *node_prev = node->prev;
+  struct DListNode *node_next = node->next;
+
+  if (node_prev != NULL) {
+    node_prev->next = node_next;
+  } else {
+    // saqué el primero.
+    queue->back = node_next;
+  }
+
+  if (node_next != NULL) {
+    node_next->prev = node_prev;
+  } else {
+    // saqué el último.
+    queue->front = node_prev;
+  }
+
+  node->prev = node->next = NULL;
+}
+
 /* Prints the queue to stdout.
  * Elements in the back are to the left, elements in the front are to the right.
  */

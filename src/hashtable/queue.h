@@ -28,6 +28,12 @@ void queue_enqueue(struct Queue *queue, struct DListNode *node);
  */
 struct DListNode *queue_dequeue(struct Queue *queue);
 
+/* Removes the given node from the queue.
+ * The `prev` and `next` members of the node will be modified.
+ * Assumes that the node belongs in the queue.
+ */
+void queue_remove_node(struct Queue *queue, struct DListNode *node);
+
 /* Prints the queue to stdout.
  * Elements in the back are to the left, elements in the front are to the right.
  */
