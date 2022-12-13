@@ -7,7 +7,7 @@
 
 #include "binary.h"
 
-/* Reads an argument from the binary client according to the text protocol
+/* Reads an argument from a binary client according to the binary protocol
  * specification.
  * Allocates memory for the buffer where the binary argument is going to be
  * stored and stores it in the `arg` pointer, and stores the size in `arg_size`.
