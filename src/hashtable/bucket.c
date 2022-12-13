@@ -8,12 +8,13 @@
  */
 struct BucketNode *node_create(uint32_t key_size, char *key,
                                uint32_t value_size, char *value) {
-  struct BucketNode *node = calloc(1, sizeof(struct BucketNode));
+  struct BucketNode *node = malloc(sizeof(struct BucketNode));
   if (node == NULL) {
-    perror("calloc node_create");
+    perror("malloc node_create");
     abort();
   }
 
+  node->next = NULL;
   node->key_size = key_size;
   node->key = key;
   node->value_size = value_size;
