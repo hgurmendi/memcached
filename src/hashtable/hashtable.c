@@ -91,6 +91,11 @@ int hashtable_insert(struct HashTable *hashtable, uint32_t key_size, char *key,
   if (current_node == NULL) {
     bucket->node = node_create(key_size, key, value_size, value);
 
+    // Add it to the LRU queue.
+    pthread_mutex_lock(&hashtable->lru_queue_lock);
+    queue_enqueue(hashtable->lru_queue, &bucket->node->lru_queue_node);
+    pthread_mutex_unlock(&hashtable->lru_queue_lock);
+
     bucket->key_count += 1;
     pthread_mutex_unlock(&(bucket->lock));
     return HT_NOTFOUND;
@@ -111,6 +116,12 @@ int hashtable_insert(struct HashTable *hashtable, uint32_t key_size, char *key,
       current_node->value_size = value_size;
       current_node->value = value;
 
+      // Re-add it to the LRU queue.
+      pthread_mutex_lock(&hashtable->lru_queue_lock);
+      queue_remove_node(hashtable->lru_queue, &bucket->node->lru_queue_node);
+      queue_enqueue(hashtable->lru_queue, &bucket->node->lru_queue_node);
+      pthread_mutex_unlock(&hashtable->lru_queue_lock);
+
       pthread_mutex_unlock(&(bucket->lock));
       return HT_FOUND;
     }
@@ -121,6 +132,11 @@ int hashtable_insert(struct HashTable *hashtable, uint32_t key_size, char *key,
 
   // The key doesn't exist in the bucket, add it after the last node.
   last_node->next = node_create(key_size, key, value_size, value);
+
+  // Add it to the LRU queue.
+  pthread_mutex_lock(&hashtable->lru_queue_lock);
+  queue_enqueue(hashtable->lru_queue, &last_node->next->lru_queue_node);
+  pthread_mutex_unlock(&hashtable->lru_queue_lock);
 
   bucket->key_count += 1;
   pthread_mutex_unlock(&(bucket->lock));
