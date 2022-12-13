@@ -20,6 +20,7 @@ uint64_t hashtable_key_count(struct HashTable *hashtable) {
  * buckets.
  */
 struct HashTable *hashtable_create(uint32_t buckets_size, HashFunction hash) {
+  int ret;
   struct HashTable *hashtable = calloc(1, sizeof(struct HashTable));
   if (hashtable == NULL) {
     perror("hashtable_create calloc hashtable");
@@ -33,6 +34,14 @@ struct HashTable *hashtable_create(uint32_t buckets_size, HashFunction hash) {
     perror("hashtable_create calloc buckets");
     abort();
   }
+
+  ret = pthread_mutex_init(&hashtable->lru_queue_lock, NULL);
+  if (ret != 0) {
+    perror("pthread_mutex_init lru_queue_lock");
+    abort();
+  }
+
+  hashtable->lru_queue = queue_create();
 
   for (int i = 0; i < buckets_size; i++) {
     bucket_initialize(&(hashtable->buckets[i]));

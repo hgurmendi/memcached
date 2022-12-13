@@ -5,12 +5,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "dlist.h"
+
 struct BucketNode {
   struct BucketNode *next;
   uint32_t key_size;
   char *key;
   uint32_t value_size;
   char *value;
+
+  // Node used in the LRU queue.
+  struct DListNode lru_queue_node;
 };
 
 struct Bucket {

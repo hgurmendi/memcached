@@ -5,6 +5,7 @@
 
 #include "bucket.h"
 #include "hash.h"
+#include "queue.h"
 
 #define HT_FOUND 1
 #define HT_NOTFOUND 2
@@ -14,6 +15,9 @@ struct HashTable {
   int buckets_size;
   struct Bucket *buckets;
   HashFunction hash;
+
+  pthread_mutex_t lru_queue_lock;
+  struct Queue *lru_queue;
 };
 
 /* Returns the number of unique keys present in the hash table.

@@ -19,11 +19,16 @@ struct BucketNode *node_create(uint32_t key_size, char *key,
   node->value_size = value_size;
   node->value = value;
 
+  // Initialize the LRU queue node with a pointer to this bucket node.
+  dlist_node_initialize(&(node->lru_queue_node), (void *)node);
+
   return node;
 }
 
 /* Destroys the given bucket node, freeing the memory for the `key` and `value`
  * members (if not NULL) and frees the memory used for the bucket node itself.
+ * Assumes that the `lru_queue_node` member is not being referenced by anyone
+ * when calling this function.
  */
 void node_destroy(struct BucketNode *node) {
   if (node->key != NULL) {
