@@ -331,6 +331,8 @@ void hashtable_destroy(struct HashTable *hashtable) {
     bucket_destroy(&(hashtable->buckets[i]));
   }
 
+  pthread_mutex_destroy(&hashtable->lru_queue_lock);
+  queue_destroy(hashtable->lru_queue);
   free(hashtable->buckets);
   free(hashtable);
 }
@@ -346,6 +348,76 @@ static void hashtable_print_bucket_nodes(struct BucketNode *bucket_node) {
 
   printf("-> (%s:%s) ", bucket_node->key, bucket_node->value);
   hashtable_print_bucket_nodes(bucket_node->next);
+}
+
+/* Evits a key-value pair from the HashTable. It attempts from the least
+ * recently used key-value pair until we can evict one.
+ * Returns true if a key-value pair is successfully evicted from the hash table,
+ * false otherwise.
+ */
+bool hashtable_evict(struct HashTable *hashtable) {
+  struct Queue *queue = hashtable->lru_queue;
+  bool performed_eviction = false;
+
+  pthread_mutex_lock(&hashtable->lru_queue_lock);
+
+  // Traverse the LRU queue in dequeue order (i.e. from the front to the
+  // back) until we find someone.
+  struct DListNode *current_lru_node = queue->front;
+  while (current_lru_node != NULL) {
+    // Find the bucket of the victim.
+    struct BucketNode *victim_bucket_node =
+        (struct BucketNode *)current_lru_node->value;
+    struct Bucket *victim_bucket = hashtable_get_bucket_for_key(
+        hashtable, victim_bucket_node->key_size, victim_bucket_node->key);
+
+    // Try to acquire the victim's bucket lock since we'll be modifying it.
+    if (pthread_mutex_trylock(&victim_bucket->lock) == 0) {
+      // Here we remove the victim's bucket node from the bucket list
+      // (essentially evicting them).
+
+      // First, find the previous bucket node so we can correctly unlink the
+      // victim's bucket node.
+      struct BucketNode *current_bucket_node = victim_bucket->node;
+      struct BucketNode *previous_bucket = NULL;
+      while (current_bucket_node != victim_bucket_node) {
+        previous_bucket = current_bucket_node;
+        current_bucket_node = current_bucket_node->next;
+      }
+
+      // At this point we have all that we need to unlink the victim's bucket
+      // node from the bucket list.
+
+      // We now unlink it:
+      if (previous_bucket == NULL) {
+        // The victim's bucket node was the first node in the bucket.
+        victim_bucket->node = victim_bucket_node->next;
+      } else {
+        // The victim's bucket node wasn't the first node in the bucket.
+        previous_bucket->next = victim_bucket_node->next;
+      }
+
+      // Clean the next pointer in the victim's bucket node, just in case.
+      victim_bucket_node->next = NULL;
+
+      // Then, we remove the victim's LRU queue node from the LRU queue:
+      queue_remove_node(queue, current_lru_node);
+
+      // We free the memory of the bucket list. This essentially frees the key
+      // and value memory from the shared cache.
+      node_destroy(victim_bucket_node);
+
+      // We're finally done!
+      pthread_mutex_unlock(&victim_bucket->lock);
+
+      performed_eviction = true;
+      break;
+    }
+  }
+
+  pthread_mutex_unlock(&hashtable->lru_queue_lock);
+
+  return performed_eviction;
 }
 
 /* Prints the buckets of the given hash table to stdout.

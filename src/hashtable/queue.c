@@ -21,6 +21,11 @@ struct Queue *queue_create() {
   return queue;
 }
 
+/* Frees the memory used for the queue.
+ * This operation doesn't free the memory of the nodes.
+ */
+void queue_destroy(struct Queue *queue) { free(queue); }
+
 /* Inserts a new node to the back of the queue.
  * The `prev` and `next` members of the node will be modified.
  */

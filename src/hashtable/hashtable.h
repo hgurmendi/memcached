@@ -67,6 +67,13 @@ int hashtable_get(struct HashTable *hashtable, uint32_t key_size, char *key,
 int hashtable_take(struct HashTable *hashtable, uint32_t key_size, char *key,
                    uint32_t *ret_value_size, char **ret_value);
 
+/* Evits a key-value pair from the HashTable. It attempts from the least
+ * recently used key-value pair until we can evict one.
+ * Returns true if a key-value pair is successfully evicted from the hash table,
+ * false otherwise.
+ */
+bool hashtable_evict(struct HashTable *hashtable);
+
 /* Frees up the memory used by the given hash table.
  * Frees the memory of all the keys and values.
  */

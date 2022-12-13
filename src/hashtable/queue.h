@@ -18,6 +18,11 @@ struct Queue {
 /* Allocates memory for the queue. */
 struct Queue *queue_create();
 
+/* Frees the memory used for the queue.
+ * This operation doesn't free the memory of the nodes.
+ */
+void queue_destroy(struct Queue *queue);
+
 /* Inserts a new node to the back of the queue.
  * The `prev` and `next` members of the node will be modified.
  */
