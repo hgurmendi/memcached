@@ -23,6 +23,7 @@ static bool tokenEquals(const char *token, const char *command) {
  */
 void read_command_from_text_client(int client_fd, struct Command *command) {
   char buffer[REQUEST_BUFFER_SIZE];
+  char *buf_start = buffer;
   int bytes_read = read(client_fd, buffer, REQUEST_BUFFER_SIZE);
 
   // If the call to `read` fails or we read more characters than we are allowed
@@ -54,7 +55,7 @@ void read_command_from_text_client(int client_fd, struct Command *command) {
 
   // We start tokenizing the buffer. We start with the first token that should
   // be the command of the request.
-  char *command_token = strsep(&buffer, " ");
+  char *command_token = strsep(&buf_start, " ");
   // I don't think the check below is necessary. I think that getting a NULl
   // pointer on the first call of strsep would mean that the received command is
   // an empty line.
@@ -65,8 +66,8 @@ void read_command_from_text_client(int client_fd, struct Command *command) {
 
   // We read both argument tokens. Any of these might be NULL, in which case
   // that argument doesn't exist.
-  char *arg1_token = strsep(&buffer, " ");
-  char *arg2_token = strsep(&buffer, " ");
+  char *arg1_token = strsep(&buf_start, " ");
+  char *arg2_token = strsep(&buf_start, " ");
 
   // Parse PUT.
   if (tokenEquals(command_token, "PUT")) {
