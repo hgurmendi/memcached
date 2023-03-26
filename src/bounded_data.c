@@ -1,7 +1,10 @@
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "bounded_data.h"
+#include "utils.h"
 
 // Allocates memory for a BoundedData instance, save a reference to the given
 // buffer as well as its size and return it. This essentially wraps an existing
@@ -90,4 +93,10 @@ void bounded_data_destroy(struct BoundedData *bounded_data) {
 // Prints the given BoundedData instance to standard output, no newline.
 void bounded_data_print(struct BoundedData *bounded_data) {
   printf("%s", bounded_data->data);
+}
+
+// true if the contents of the given BoundedData instance are representable as
+// text, false otherwise.
+bool bounded_data_is_text_representable(struct BoundedData *bounded_data) {
+  return is_text_representable(bounded_data->data, bounded_data->size);
 }

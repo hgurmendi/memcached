@@ -7,7 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "bounded_data.h"
+#include "../bounded_data.h"
 #include "command.h"
 #include "text.h"
 
@@ -180,16 +180,4 @@ int write_command_to_text_client(int client_fd,
   }
 
   return 0;
-}
-
-/* true if the given char array is representable as text, false otherwise.
- */
-bool is_text_representable(uint64_t size, char *arr) {
-  for (int i = 0; i < size - 1; i++) {
-    if (!isprint(arr[i])) {
-      return false;
-    }
-  }
-  // Also check it's terminated with a null character.
-  return arr[size - 1] == '\0';
 }

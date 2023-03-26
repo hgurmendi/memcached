@@ -145,7 +145,7 @@ static void handle_client(struct ClientEpollEventData *event_data,
     } else {
       // Check if the value is valid for a text client.
       if (event_data->connection_type == TEXT &&
-          !is_text_representable(get_result)) {
+          !bounded_data_is_text_representable(get_result)) {
         response_command.type = BT_EBINARY;
       } else {
         response_command.arg1 = get_result;
@@ -175,7 +175,7 @@ static void handle_client(struct ClientEpollEventData *event_data,
     } else {
       // Check if the value is valid for a text client.
       if (event_data->connection_type == TEXT &&
-          !is_text_representable(response_command.arg1)) {
+          !bounded_data_is_text_representable(response_command.arg1)) {
         response_command.type = BT_EBINARY;
       } else {
         response_command.arg1 = get_result;
@@ -191,8 +191,13 @@ static void handle_client(struct ClientEpollEventData *event_data,
     // Return OK along with various statistics about the usage of the cache,
     // namely: number of PUTs, number of DELs, number of GETs, number of TAKEs,
     // number of STATSs, number of KEYs (i.e. key-value pairs) stored.
-    response_command.arg1 = generate_stats_response(
-        workers_stats, num_workers, hashtable_key_count(hashtable));
+
+    // TODO: implement the hashtable key count function.
+    // response_command.arg1 = generate_stats_response(
+    //     workers_stats, num_workers, hashtable_key_count(hashtable));
+
+    response_command.arg1 =
+        generate_stats_response(workers_stats, num_workers, 42069);
     response_command.type = BT_OK;
 
     if (response_command.arg1 == NULL) {

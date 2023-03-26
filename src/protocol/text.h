@@ -24,8 +24,4 @@ void read_command_from_text_client(int client_fd, struct Command *command);
 int write_command_to_text_client(int client_fd,
                                  struct Command *response_command);
 
-/* true if the given char array is representable as text, false otherwise.
- */
-bool is_text_representable(uint64_t size, char *arr);
-
 #endif
