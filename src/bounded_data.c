@@ -40,7 +40,13 @@ struct BoundedData *bounded_data_create_from_buffer_duplicate(char *buffer,
 // Allocates memory for a duplicate of the given string, copies it and then
 // wraps it with a BoundedData instance.
 struct BoundedData *bounded_data_create_from_string_duplicate(char *str) {
-  return bounded_data_create_from_buffer_duplicate(str, strlen(str));
+  return bounded_data_create_from_buffer_duplicate(str, strlen(str) + 1);
+}
+
+// Allocates memory for a BoundedData instance and wraps a string with it,
+// returning the BoundedData instance.
+struct BoundedData *bounded_data_create_from_string(char *str) {
+  return bounded_data_create_from_buffer(str, strlen(str) + 1);
 }
 
 // True if the given BoundedData instances are equal byte-by-byte, false
