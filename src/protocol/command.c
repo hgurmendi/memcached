@@ -60,6 +60,14 @@ void command_print(struct Command *command) {
   printf("Command:\n");
   printf("Type: %s (%d)\n", binary_type_str(command->type), command->type);
   // TODO: Improve printing because BoundedData->data might not be printable.
-  printf("Arg1 (size %ld): %s\n", command->arg1->size, command->arg1->data);
-  printf("Arg2 (size %ld): %s\n", command->arg2->size, command->arg2->data);
+  if (command->arg1 != NULL) {
+    printf("Arg1 (size %ld): %s\n", command->arg1->size, command->arg1->data);
+  } else {
+    printf("Arg1: <nothing>\n");
+  }
+  if (command->arg2 != NULL) {
+    printf("Arg2 (size %ld): %s\n", command->arg2->size, command->arg2->data);
+  } else {
+    printf("Arg2: <nothing>\n");
+  }
 }
