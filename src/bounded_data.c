@@ -32,8 +32,15 @@ struct BoundedData *bounded_data_create_from_buffer_duplicate(char *buffer,
     perror("bounded_data_create_from_buffer_duplicate malloc");
     abort();
   }
+  memcpy(buffer_copy, buffer, size);
   // Them just create a BoundedData instance from that copy.
   return bounded_data_create_from_buffer(buffer_copy, size);
+}
+
+// Allocates memory for a duplicate of the given string, copies it and then
+// wraps it with a BoundedData instance.
+struct BoundedData *bounded_data_create_from_string_duplicate(char *str) {
+  return bounded_data_create_from_buffer_duplicate(str, strlen(str));
 }
 
 // True if the given BoundedData instances are equal byte-by-byte, false

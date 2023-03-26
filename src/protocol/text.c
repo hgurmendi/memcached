@@ -1,46 +1,15 @@
 #include <ctype.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
+#include <unistd.h>
 
+#include "bounded_data.h"
 #include "command.h"
 #include "text.h"
-
-/* Reads an argument from the text client according to the text protocol
- * specification.
- * Allocates memory for the buffer where the text argument is going to be stored
- * and stores it in the `arg` pointer, and stores the size in `arg_size`.
- * Returns true if it was able to successfully read the argument from the
- * buffer, false otherwise.
- * Mutates the char bufer pointed at by buf because we use strdup.
- */
-static bool read_argument_from_text_client(char **buf, char **arg,
-                                           uint32_t *arg_size) {
-  if (*buf == NULL) {
-    // We ran out of space-separated tokens in the text buffer, so we can't read
-    // any more text arguments.
-    return false;
-  }
-
-  char *token = strsep(buf, " ");
-  *arg_size = strnlen(token, MAX_REQUEST_SIZE) + 1;
-  if (*arg_size <= 1) {
-    // Got an empty token... i.e. "GET "
-    return false;
-  }
-
-  *arg = calloc(*arg_size, sizeof(char));
-  if (*arg == NULL) {
-    perror("Error allocating memory for text client argument");
-    return false;
-  }
-
-  memcpy(*arg, token, *arg_size);
-  return true;
-}
 
 /* True if the strings are equal.
  */
@@ -53,84 +22,110 @@ static bool tokenEquals(const char *token, const char *command) {
  * given command, if any of them is not NULL.
  */
 void read_command_from_text_client(int client_fd, struct Command *command) {
-  // TODO: Figure out why using this kind of buffer definition breaks
-  // everything.
-  //   char buf[MAX_REQUEST_SIZE + 1];
-  char *buf = calloc(MAX_REQUEST_SIZE + 1, sizeof(char));
-  char *tofree = buf;
-  int bytes_read = recv(client_fd, buf, MAX_REQUEST_SIZE + 1, 0);
+  char buffer[REQUEST_BUFFER_SIZE];
+  int bytes_read = read(client_fd, buffer, REQUEST_BUFFER_SIZE);
 
-  // TODO: this might break if we read more characters after the newline
-  // character, for example in a "burst" of data from a client... we might have
-  // to do something different like continuously store in a buffer until a
-  // newline is found and parse once we find a newline...
-  if (bytes_read > MAX_REQUEST_SIZE || bytes_read < 0) {
+  // If the call to `read` fails or we read more characters than we are allowed
+  // to, return an invalid command.
+  // If the call to `read` failed with errno EAGAIN something must be wrong
+  // because the file descriptor should be ready for reading, so we log a
+  // message.
+  if (bytes_read == -1 || bytes_read > MAX_REQUEST_SIZE) {
     command->type = BT_EINVAL;
-    free(tofree);
+    if (errno == EAGAIN) {
+      perror("read_command_from_text_client `read` should be ready");
+    }
     return;
   }
 
-  // TODO: this might break if the above happens... we are assuming the reads
-  // are line buffered
-  buf[MAX_REQUEST_SIZE] = '\0';
-
-  char *newline = strchr(buf, '\n');
-  // Return an incorrect parse result if the command doesn't have a newline
-  // character in it
+  // Try to find a newline character within the bounds of the maximum allowed
+  // size for the request. If we don't find a newline just return an invalid
+  // command.
+  char *newline = memchr(buffer, '\n', MAX_REQUEST_SIZE);
   if (newline == NULL) {
     command->type = BT_EINVAL;
-    free(tofree);
     return;
   }
 
-  // We forcefully terminate the buffer at the newline, this might be wrong too,
-  // related to the comments above.
+  // Now we know that the request has a newline character so it's probably well
+  // formed. We replace the newline character with a terminating null character
+  // so that we can tokenize the buffer with strsep.
   *newline = '\0';
 
-  char *token = NULL;
-  token = strsep(&buf, " ");
+  // We start tokenizing the buffer. We start with the first token that should
+  // be the command of the request.
+  char *command_token = strsep(&buffer, " ");
+  // I don't think the check below is necessary. I think that getting a NULl
+  // pointer on the first call of strsep would mean that the received command is
+  // an empty line.
+  // if (token == NULL) {
+  //   command->type = BT_EINVAL;
+  //   return;
+  // }
 
-  if (tokenEquals(token, "PUT")) {
-    if (read_argument_from_text_client(&buf, &command->arg1,
-                                       &command->arg1_size) &&
-        read_argument_from_text_client(&buf, &command->arg2,
-                                       &command->arg2_size)) {
-      command->type = BT_PUT;
-    } else {
+  // We read both argument tokens. Any of these might be NULL, in which case
+  // that argument doesn't exist.
+  char *arg1_token = strsep(&buffer, " ");
+  char *arg2_token = strsep(&buffer, " ");
+
+  // Parse PUT.
+  if (tokenEquals(command_token, "PUT")) {
+    if (arg1_token == NULL || arg2_token == NULL) {
       command->type = BT_EINVAL;
-      command_destroy_args(command);
+      return;
     }
-  } else if (tokenEquals(token, "DEL")) {
-    if (read_argument_from_text_client(&buf, &command->arg1,
-                                       &command->arg1_size)) {
-      command->type = BT_DEL;
-    } else {
-      command->type = BT_EINVAL;
-      command_destroy_args(command);
-    }
-  } else if (tokenEquals(token, "GET")) {
-    if (read_argument_from_text_client(&buf, &command->arg1,
-                                       &command->arg1_size)) {
-      command->type = BT_GET;
-    } else {
-      command->type = BT_EINVAL;
-      command_destroy_args(command);
-    }
-  } else if (tokenEquals(token, "TAKE")) {
-    if (read_argument_from_text_client(&buf, &command->arg1,
-                                       &command->arg1_size)) {
-      command->type = BT_TAKE;
-    } else {
-      command->type = BT_EINVAL;
-      command_destroy_args(command);
-    }
-  } else if (tokenEquals(token, "STATS")) {
-    command->type = BT_STATS;
-  } else {
-    command->type = BT_EINVAL;
+
+    command->type = BT_PUT;
+    command->arg1 = bounded_data_create_from_string_duplicate(arg1_token);
+    command->arg2 = bounded_data_create_from_string_duplicate(arg2_token);
+    return;
   }
 
-  free(tofree);
+  // Parse DEL.
+  if (tokenEquals(command_token, "DEL")) {
+    if (arg1_token == NULL) {
+      command->type = BT_EINVAL;
+      return;
+    }
+
+    command->type = BT_DEL;
+    command->arg1 = bounded_data_create_from_string_duplicate(arg1_token);
+    return;
+  }
+
+  // Parse GET.
+  if (tokenEquals(command_token, "GET")) {
+    if (arg1_token == NULL) {
+      command->type = BT_EINVAL;
+      return;
+    }
+
+    command->type = BT_GET;
+    command->arg1 = bounded_data_create_from_string_duplicate(arg1_token);
+    return;
+  }
+
+  // Parse TAKE.
+  if (tokenEquals(command_token, "TAKE")) {
+    if (arg1_token == NULL) {
+      command->type = BT_EINVAL;
+      return;
+    }
+
+    command->type = BT_TAKE;
+    command->arg1 = bounded_data_create_from_string_duplicate(arg1_token);
+    return;
+  }
+
+  // Parse STATS.
+  if (tokenEquals(command_token, "STATS")) {
+    command->type = BT_STATS;
+    return;
+  }
+
+  // The request doesn't belong to a valid command.
+  command->type = BT_EINVAL;
+  return;
 }
 
 /* Writes a command to a client that is communicating using the text protocol.
@@ -143,28 +138,34 @@ void read_command_from_text_client(int client_fd, struct Command *command) {
 int write_command_to_text_client(int client_fd,
                                  struct Command *response_command) {
   int status;
-  char write_buf[MAX_REQUEST_SIZE];
+  char write_buf[REQUEST_BUFFER_SIZE];
   int bytes_written = 0;
 
   switch (response_command->type) {
   case BT_EBINARY:
-    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "EBINARY\n");
+    bytes_written = snprintf(write_buf, REQUEST_BUFFER_SIZE, "EBINARY\n");
     break;
   case BT_EINVAL:
-    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "EINVAL\n");
+    bytes_written = snprintf(write_buf, REQUEST_BUFFER_SIZE, "EINVAL\n");
     break;
   case BT_OK:
     // Write the first argument of the command as the "argument" of the OK
-    // response.
+    // response. We assume it's text representable.
     if (response_command->arg1 != NULL) {
-      bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "OK %s\n",
-                               response_command->arg1);
+      // First check if the response is too big, in which case we'll just return
+      // EBIG.
+      if (response_command->arg1->size > MAX_REQUEST_SIZE) {
+        bytes_written = snprintf(write_buf, REQUEST_BUFFER_SIZE, "EBIG\n");
+      } else {
+        bytes_written = snprintf(write_buf, REQUEST_BUFFER_SIZE, "OK %s\n",
+                                 response_command->arg1->data);
+      }
     } else {
-      bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "OK\n");
+      bytes_written = snprintf(write_buf, REQUEST_BUFFER_SIZE, "OK\n");
     }
     break;
   case BT_ENOTFOUND:
-    bytes_written = snprintf(write_buf, MAX_REQUEST_SIZE, "ENOTFOUND\n");
+    bytes_written = snprintf(write_buf, REQUEST_BUFFER_SIZE, "ENOTFOUND\n");
     break;
   default:
     printf("Encountered unknown command type whem sending data to client...\n");
@@ -172,9 +173,9 @@ int write_command_to_text_client(int client_fd,
     break;
   }
 
-  status = send(client_fd, write_buf, bytes_written, 0);
+  status = write(client_fd, write_buf, bytes_written);
   if (status < 0) {
-    perror("Error sending data to text client");
+    perror("write_command_to_text_client write");
     return -1;
   }
 
@@ -183,12 +184,12 @@ int write_command_to_text_client(int client_fd,
 
 /* true if the given char array is representable as text, false otherwise.
  */
-bool is_text_representable(uint32_t size, char *arr) {
+bool is_text_representable(uint64_t size, char *arr) {
   for (int i = 0; i < size - 1; i++) {
     if (!isprint(arr[i])) {
       return false;
     }
   }
-
+  // Also check it's terminated with a null character.
   return arr[size - 1] == '\0';
 }

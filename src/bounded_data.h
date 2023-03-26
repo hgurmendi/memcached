@@ -22,6 +22,10 @@ struct BoundedData *bounded_data_create_from_buffer(char *buffer,
 struct BoundedData *bounded_data_create_from_buffer_duplicate(char *buffer,
                                                               uint64_t size);
 
+// Allocates memory for a duplicate of the given string, copies it and then
+// wraps it with a BoundedData instance.
+struct BoundedData *bounded_data_create_from_string_duplicate(char *str);
+
 // True if the given BoundedData instances are equal byte-by-byte, false
 // otherwise.
 bool bounded_data_equals(struct BoundedData *a, struct BoundedData *b);

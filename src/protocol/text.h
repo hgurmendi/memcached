@@ -4,6 +4,9 @@
 #include "command.h"
 
 #define MAX_REQUEST_SIZE 2048
+// The buffer where we store the request has a bit of leeway on top of the
+// maximum request size.
+#define REQUEST_BUFFER_SIZE (MAX_REQUEST_SIZE + 10)
 
 /* Reads a command from a client that is communicating using the text protocol.
  * It's responsibility of the consumer to free the pointers inside the
@@ -23,6 +26,6 @@ int write_command_to_text_client(int client_fd,
 
 /* true if the given char array is representable as text, false otherwise.
  */
-bool is_text_representable(uint32_t size, char *arr);
+bool is_text_representable(uint64_t size, char *arr);
 
 #endif
