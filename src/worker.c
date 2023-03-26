@@ -175,10 +175,10 @@ static void handle_client(struct ClientEpollEventData *event_data,
     } else {
       // Check if the value is valid for a text client.
       if (event_data->connection_type == TEXT &&
-          !bounded_data_is_text_representable(response_command.arg1)) {
+          !bounded_data_is_text_representable(take_result)) {
         response_command.type = BT_EBINARY;
       } else {
-        response_command.arg1 = get_result;
+        response_command.arg1 = take_result;
         response_command.type = BT_OK;
       }
       // response_command.arg1 already contains the value for the corresponding
