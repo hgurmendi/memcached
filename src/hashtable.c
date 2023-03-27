@@ -19,17 +19,25 @@ struct HashTable *hashtable_create(uint64_t num_buckets,
     abort();
   }
 
-  // Allocate memory for the buckets of the hash table and create each one of
-  // them.
+  // Allocate memory for the buckets of the hash table and initialize each to
+  // NULL.
   hashtable->num_buckets = num_buckets;
-  hashtable->buckets = malloc(sizeof(struct Bucket *) * num_buckets);
+  hashtable->buckets = malloc(sizeof(struct BucketNode *) * num_buckets);
   if (hashtable->buckets == NULL) {
     perror("hashtable_create malloc2");
     abort();
   }
   for (int i = 0; i < num_buckets; i++) {
-    hashtable->buckets[i] = bucket_create();
+    hashtable->buckets[i] = NULL;
   }
+
+  // Allocate memory for the mutex of the hash table and initialize it.
+  hashtable->mutex = malloc(sizeof(pthread_mutex_t));
+  if (hashtable->mutex == NULL) {
+    perror("hashtable_create malloc3");
+    abort();
+  }
+  pthread_mutex_init(hashtable->mutex, NULL);
 
   // Set up the callbacks for the hash table operation.
   hashtable->hash = hash;
@@ -41,6 +49,13 @@ struct HashTable *hashtable_create(uint64_t num_buckets,
   return hashtable;
 }
 
+// Returns the bucket index in the hash table for the given key.
+static uint64_t hashtable_get_bucket_index(struct HashTable *hashtable,
+                                           void *key) {
+  uint64_t key_hash = hashtable->hash(key);
+  return key_hash % hashtable->num_buckets;
+}
+
 // Inserts the given key and value into the hash table.
 //////////////////////////////////////
 // If the key doesn't already exist in the hash table, the function returns
@@ -49,14 +64,12 @@ struct HashTable *hashtable_create(uint64_t num_buckets,
 // HT_FOUND, the given key pointer becomes owned by the hash table, the old key
 // pointer is destroyed (!!) and the old value pointer is destroyed (!!).
 int hashtable_insert(struct HashTable *hashtable, void *key, void *value) {
-  // Determine the bucket for the key.
-  uint64_t key_hash = hashtable->hash(key);
-  uint64_t target_bucket = key_hash % hashtable->num_buckets;
-  struct Bucket *bucket = hashtable->buckets[target_bucket];
-
-  pthread_mutex_lock(bucket->mutex);
+  // Determine the bucket index for the key.
+  uint64_t bucket_index = hashtable_get_bucket_index(hashtable, key);
   struct BucketNode *previous_node = NULL;
-  struct BucketNode *current_node = bucket->node;
+
+  pthread_mutex_lock(hashtable->mutex);
+  struct BucketNode *current_node = hashtable->buckets[bucket_index];
 
   // Look for the key in the bucket.
   while (current_node != NULL) {
@@ -67,13 +80,12 @@ int hashtable_insert(struct HashTable *hashtable, void *key, void *value) {
       current_node->value = value;
       hashtable->destroy_value(old_value);
 
-      // Replace the old key with the new one and free the old key.
-      void *old_key = current_node->key;
-      current_node->key = key;
-      hashtable->destroy_key(old_key);
+      // Delete the new key since the old one is already assigned and is the
+      // same.
+      hashtable->destroy_key(key);
 
       // Return HT_FOUND to signal that the key was found when inserting.
-      pthread_mutex_unlock(bucket->mutex);
+      pthread_mutex_unlock(hashtable->mutex);
       return HT_FOUND;
     }
 
@@ -83,15 +95,15 @@ int hashtable_insert(struct HashTable *hashtable, void *key, void *value) {
   }
 
   // Didn't find the key. Add it to the bucket.
-  struct BucketNode *new_node = node_create(key, value);
+  struct BucketNode *new_node = bucket_node_create(key, value);
   if (previous_node == NULL) {
-    bucket->node = new_node;
+    hashtable->buckets[bucket_index] = new_node;
   } else {
     previous_node->next = new_node;
   }
 
   // Return HT_NOTFOUND to signal that the key wasn't found when inserting.
-  pthread_mutex_unlock(bucket->mutex);
+  pthread_mutex_unlock(hashtable->mutex);
   return HT_NOTFOUND;
 }
 
@@ -105,24 +117,21 @@ int hashtable_insert(struct HashTable *hashtable, void *key, void *value) {
 // associated to the given key in the hash table. The pointer of the given key
 // is owned by the client.
 int hashtable_get(struct HashTable *hashtable, void *key, void **value) {
-  // Determine the bucket for the key.
-  uint64_t key_hash = hashtable->hash(key);
-  uint64_t target_bucket = key_hash % hashtable->num_buckets;
-  struct Bucket *bucket = hashtable->buckets[target_bucket];
+  // Determine the bucket index for the key.
+  uint64_t bucket_index = hashtable_get_bucket_index(hashtable, key);
 
-  pthread_mutex_lock(bucket->mutex);
-  struct BucketNode *current_node = bucket->node;
+  pthread_mutex_lock(hashtable->mutex);
+  struct BucketNode *current_node = hashtable->buckets[bucket_index];
 
   // Look for the key in the bucket.
   while (current_node != NULL) {
     if (hashtable->key_equals(current_node->key, key)) {
       // Found it!
       // Get a copy of the value and "return" a pointer to it.
-      void *copied_value = hashtable->copy_value(current_node->value);
-      *value = copied_value;
+      *value = hashtable->copy_value(current_node->value);
 
       // Return HT_FOUND to signal that the key was found when retrieving.
-      pthread_mutex_unlock(bucket->mutex);
+      pthread_mutex_unlock(hashtable->mutex);
       return HT_FOUND;
     }
 
@@ -131,7 +140,7 @@ int hashtable_get(struct HashTable *hashtable, void *key, void **value) {
   }
 
   // Return HT_NOTFOUND to signal that the key wasn't found when retrieving.
-  pthread_mutex_unlock(bucket->mutex);
+  pthread_mutex_unlock(hashtable->mutex);
   return HT_NOTFOUND;
 }
 
@@ -145,14 +154,12 @@ int hashtable_get(struct HashTable *hashtable, void *key, void **value) {
 // to the given key in the hash table and the key pointer in the hash table is
 // destroyed (!!).
 int hashtable_take(struct HashTable *hashtable, void *key, void **value) {
-  // Determine the bucket for the key.
-  uint64_t key_hash = hashtable->hash(key);
-  uint64_t target_bucket = key_hash % hashtable->num_buckets;
-  struct Bucket *bucket = hashtable->buckets[target_bucket];
-
-  pthread_mutex_lock(bucket->mutex);
+  // Determine the bucket index for the key.
+  uint64_t bucket_index = hashtable_get_bucket_index(hashtable, key);
   struct BucketNode *previous_node = NULL;
-  struct BucketNode *current_node = bucket->node;
+
+  pthread_mutex_lock(hashtable->mutex);
+  struct BucketNode *current_node = hashtable->buckets[bucket_index];
 
   while (current_node != NULL) {
     // Look for the key in the bucket.
@@ -170,17 +177,17 @@ int hashtable_take(struct HashTable *hashtable, void *key, void **value) {
       // Remove the node from the bucket
       if (previous_node == NULL) {
         // The key-value pair is stored in the first node of the bucket.
-        bucket->node = current_node->next;
+        hashtable->buckets[bucket_index] = current_node->next;
       } else {
         // The key-value pair is not stored in the first node of the bucket.
         previous_node->next = current_node->next;
       }
 
       // Destroy the bucket node of the key-value pair.
-      node_destroy(current_node);
+      bucket_node_destroy(current_node);
 
       // Return HT_FOUND to signal that the key was found when removing.
-      pthread_mutex_unlock(bucket->mutex);
+      pthread_mutex_unlock(hashtable->mutex);
       return HT_FOUND;
     }
 
@@ -190,7 +197,7 @@ int hashtable_take(struct HashTable *hashtable, void *key, void **value) {
   }
 
   // Return HT_NOTFOUND to signal that the key wasn't found when removing.
-  pthread_mutex_unlock(bucket->mutex);
+  pthread_mutex_unlock(hashtable->mutex);
   return HT_NOTFOUND;
 }
 
@@ -235,12 +242,10 @@ static void hashtable_print_bucket_nodes(struct HashTable *hashtable,
 void hashtable_print(struct HashTable *hashtable,
                      HashTablePrintFunction print_key,
                      HashTablePrintFunction print_value) {
-  struct Bucket *bucket;
   printf("=====================\n");
   for (int i = 0; i < hashtable->num_buckets; i++) {
-    bucket = hashtable->buckets[i];
     printf("%03d | ", i);
-    hashtable_print_bucket_nodes(hashtable, bucket->node, print_key,
+    hashtable_print_bucket_nodes(hashtable, hashtable->buckets[i], print_key,
                                  print_value);
   }
   printf("=====================\n");
@@ -251,16 +256,15 @@ void hashtable_print(struct HashTable *hashtable,
 // well.
 static void hashtable_destroy_bucket(struct HashTable *hashtable,
                                      int bucket_index) {
-  struct Bucket *bucket = hashtable->buckets[bucket_index];
-  struct BucketNode *current_node = bucket->node;
+  // Fetch the first node of the bucket.
+  struct BucketNode *current_node = hashtable->buckets[bucket_index];
   while (current_node != NULL) {
     struct BucketNode *node_to_destroy = current_node;
     current_node = current_node->next;
     hashtable->destroy_key(node_to_destroy->key);
     hashtable->destroy_value(node_to_destroy->value);
-    node_destroy(node_to_destroy);
+    bucket_node_destroy(node_to_destroy);
   }
-  bucket_destroy(bucket);
 }
 
 // De-allocates memory for the hash table and all its keys and values.
@@ -269,5 +273,13 @@ void hashtable_destroy(struct HashTable *hashtable) {
     hashtable_destroy_bucket(hashtable, i);
   }
   free(hashtable->buckets);
+
+  int ret = pthread_mutex_destroy(hashtable->mutex);
+  if (ret != 0) {
+    perror("hashtable_destroy pthread_mutex_destroy");
+    abort();
+  }
+  free(hashtable->mutex);
+
   free(hashtable);
 }

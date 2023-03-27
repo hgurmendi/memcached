@@ -208,6 +208,8 @@ static void handle_client(struct ClientEpollEventData *event_data,
           bounded_data_create_from_string_duplicate("ERROR GENERATING STATS");
     }
 
+    bd_hashtable_print(hashtable);
+
     stats->stats_count += 1;
     break;
   case BT_EINVAL:

@@ -32,12 +32,13 @@ typedef void (*HashTablePrintFunction)(void *);
 
 struct HashTable {
   uint64_t num_buckets;
-  struct Bucket **buckets;
+  struct BucketNode **buckets;
   HashTableHashFunction hash;
   HashTableKeyEqualsFunction key_equals;
   HashTableCopyValueFunction copy_value;
   HashTableDestroyFunction destroy_key;
   HashTableDestroyFunction destroy_value;
+  pthread_mutex_t *mutex;
 };
 
 // Allocates memory for a hash table (including all its buckets), stores the
