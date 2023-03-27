@@ -39,6 +39,7 @@ struct HashTable {
   HashTableDestroyFunction destroy_key;
   HashTableDestroyFunction destroy_value;
   pthread_mutex_t *mutex;
+  uint64_t key_count;
 };
 
 // Allocates memory for a hash table (including all its buckets), stores the
@@ -98,5 +99,8 @@ void hashtable_print(struct HashTable *hashtable,
 
 // De-allocates memory for the hash table and all its keys and values.
 void hashtable_destroy(struct HashTable *hashtable);
+
+// Returns the number of keys stored in the hash table.
+uint64_t hashtable_key_count(struct HashTable *hashtable);
 
 #endif

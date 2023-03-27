@@ -46,6 +46,9 @@ struct HashTable *hashtable_create(uint64_t num_buckets,
   hashtable->destroy_key = destroy_key;
   hashtable->destroy_value = destroy_value;
 
+  // Initialize the keys counter.
+  hashtable->key_count = 0;
+
   return hashtable;
 }
 
@@ -101,6 +104,9 @@ int hashtable_insert(struct HashTable *hashtable, void *key, void *value) {
   } else {
     previous_node->next = new_node;
   }
+
+  // Increase the keys counter.
+  hashtable->key_count++;
 
   // Return HT_NOTFOUND to signal that the key wasn't found when inserting.
   pthread_mutex_unlock(hashtable->mutex);
@@ -185,6 +191,9 @@ int hashtable_take(struct HashTable *hashtable, void *key, void **value) {
 
       // Destroy the bucket node of the key-value pair.
       bucket_node_destroy(current_node);
+
+      // Decrease the keys counter.
+      hashtable->key_count--;
 
       // Return HT_FOUND to signal that the key was found when removing.
       pthread_mutex_unlock(hashtable->mutex);
@@ -282,4 +291,9 @@ void hashtable_destroy(struct HashTable *hashtable) {
   free(hashtable->mutex);
 
   free(hashtable);
+}
+
+// Returns the number of keys stored in the hash table.
+uint64_t hashtable_key_count(struct HashTable *hashtable) {
+  return hashtable->key_count;
 }

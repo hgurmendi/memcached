@@ -192,12 +192,8 @@ static void handle_client(struct ClientEpollEventData *event_data,
     // namely: number of PUTs, number of DELs, number of GETs, number of TAKEs,
     // number of STATSs, number of KEYs (i.e. key-value pairs) stored.
 
-    // TODO: implement the hashtable key count function.
-    // response_command.arg1 = generate_stats_response(
-    //     workers_stats, num_workers, hashtable_key_count(hashtable));
-
-    response_command.arg1 =
-        generate_stats_response(workers_stats, num_workers, 42069);
+    response_command.arg1 = generate_stats_response(
+        workers_stats, num_workers, hashtable_key_count(hashtable));
     response_command.type = BT_OK;
 
     if (response_command.arg1 == NULL) {
