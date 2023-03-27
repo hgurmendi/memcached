@@ -7,7 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "../bounded_data.h"
+#include "bounded_data.h"
 #include "command.h"
 #include "text.h"
 

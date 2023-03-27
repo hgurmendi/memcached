@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "../bounded_data.h"
+#include "bounded_data.h"
 
 enum BINARY_TYPES {
   BT_PUT = 11,

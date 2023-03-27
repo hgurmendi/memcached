@@ -8,14 +8,14 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include "binary.h"
 #include "bounded_data.h"
 #include "bounded_data_hashtable.h"
+#include "command.h"
 #include "epoll.h"
 #include "hashtable.h"
 #include "parameters.h"
-#include "protocol/binary.h"
-#include "protocol/command.h"
-#include "protocol/text.h"
+#include "text.h"
 #include "worker.h"
 
 /* Closes the connection to the client.
