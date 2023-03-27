@@ -11,7 +11,7 @@
 #include "bounded_data.h"
 #include "bounded_data_hashtable.h"
 #include "epoll.h"
-#include "hashtable_redux/hashtable.h"
+#include "hashtable.h"
 #include "parameters.h"
 #include "protocol/binary.h"
 #include "protocol/command.h"

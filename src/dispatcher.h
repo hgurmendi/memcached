@@ -3,7 +3,7 @@
 
 #include <pthread.h>
 
-#include "hashtable_redux/hashtable.h"
+#include "hashtable.h"
 #include "worker.h"
 
 struct DispatcherState {

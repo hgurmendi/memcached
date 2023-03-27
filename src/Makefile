@@ -1,7 +1,7 @@
 CC=gcc
 
 memcached: $(wildcard *.c) $(wildcard *.h)
-	gcc -O2 -pthread -Wall -Werror -o memcached main.c dispatcher.c worker.c epoll.c sockets.c utils.c bounded_data.c bounded_data_hashtable.c protocol/command.c protocol/binary.c protocol/text.c hashtable_redux/bucket.c hashtable_redux/hashtable.c
+	gcc -O2 -pthread -Wall -Werror -o memcached main.c dispatcher.c worker.c epoll.c sockets.c utils.c bounded_data.c bounded_data_hashtable.c bucket.c hashtable.c protocol/command.c protocol/binary.c protocol/text.c
 
 # TODO: figure out the dependencies later... for now the rule above should work...
 

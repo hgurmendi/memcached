@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "hashtable_redux/hashtable.h"
+#include "hashtable.h"
 
 struct WorkerStats {
   uint64_t put_count;

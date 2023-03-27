@@ -1,6 +1,6 @@
 
 #include "bounded_data.h"
-#include "hashtable_redux/hashtable.h"
+#include "hashtable.h"
 
 struct HashTable *bd_hashtable_create(uint64_t num_buckets);
 
