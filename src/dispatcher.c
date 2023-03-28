@@ -6,6 +6,7 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include "bounded_data_hashtable.h"
 #include "common.h"
 #include "dispatcher.h"
 #include "epoll.h"
@@ -171,8 +172,7 @@ void dispatcher_initialize(struct DispatcherState *dispatcher_state,
     abort();
   }
 
-  dispatcher_state->hashtable =
-      hashtable_create(HASH_TABLE_BUCKETS_SIZE, HASH_TABLE_HASH_FUNCTION);
+  dispatcher_state->hashtable = bd_hashtable_create(HASH_TABLE_BUCKETS_SIZE);
   if (dispatcher_state->hashtable == NULL) {
     perror("malloc hashtable");
     abort();

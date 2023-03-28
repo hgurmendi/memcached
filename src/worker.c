@@ -8,12 +8,14 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include "binary.h"
+#include "bounded_data.h"
+#include "bounded_data_hashtable.h"
+#include "command.h"
 #include "epoll.h"
-#include "hashtable/hashtable.h"
+#include "hashtable.h"
 #include "parameters.h"
-#include "protocol/binary.h"
-#include "protocol/command.h"
-#include "protocol/text.h"
+#include "text.h"
 #include "worker.h"
 
 /* Closes the connection to the client.
@@ -43,29 +45,33 @@ static char *get_hashtable_ret_string(int ret) {
 // Creates the string response in the stack, then allocates enough memory for it
 // and mutates the `response_size` and `response` pointers if there is no
 // problem with the memory allocation.
-void generate_stats_response(struct WorkerStats *workers_stats, int num_workers,
-                             uint64_t keys_count, uint32_t *response_size,
-                             char **response) {
+struct BoundedData *generate_stats_response(struct WorkerStats *workers_stats,
+                                            int num_workers,
+                                            uint64_t keys_count) {
   struct WorkerStats summary;
-  char buf[MAX_REQUEST_SIZE];
-  int bytes_written = 0;
 
   worker_stats_merge(workers_stats, num_workers, &summary);
 
-  bytes_written =
-      snprintf(buf, MAX_REQUEST_SIZE,
-               "PUTS=%lu DELS=%lu GETS=%lu TAKES=%lu STATS=%lu KEYS=%lu",
-               summary.put_count, summary.del_count, summary.get_count,
-               summary.take_count, summary.stats_count, keys_count);
+  // Calling snprintf with a NULL buffer and size 0 essentially returns the
+  // number of characters that will be printed (not counting the terminating
+  // null character).
+  size_t printed_characters = snprintf(
+      NULL, 0, "PUTS=%lu DELS=%lu GETS=%lu TAKES=%lu STATS=%lu KEYS=%lu",
+      summary.put_count, summary.del_count, summary.get_count,
+      summary.take_count, summary.stats_count, keys_count);
 
-  char *duplicate = strdup(buf);
-  if (duplicate == NULL) {
-    perror("strdup stats response");
-    return;
+  size_t response_size = printed_characters + 1;
+  char *response = malloc(response_size);
+  if (response == NULL) {
+    perror("generate_stats_response malloc");
+    abort();
   }
+  snprintf(response, response_size,
+           "PUTS=%lu DELS=%lu GETS=%lu TAKES=%lu STATS=%lu KEYS=%lu",
+           summary.put_count, summary.del_count, summary.get_count,
+           summary.take_count, summary.stats_count, keys_count);
 
-  *response = duplicate;
-  *response_size = bytes_written + 1;
+  return bounded_data_create_from_string(response);
 }
 
 /* Handles incoming data from a client connection. If the client closes the
@@ -93,15 +99,13 @@ static void handle_client(struct ClientEpollEventData *event_data,
   switch (received_command.type) {
   case BT_PUT:
     // Add the key-value pair to the cache and return OK.
-    ret = hashtable_insert(hashtable, received_command.arg1_size,
-                           received_command.arg1, received_command.arg2_size,
-                           received_command.arg2);
+    ret = bd_hashtable_insert(hashtable, received_command.arg1,
+                              received_command.arg2);
     printf("PUT hash table result: %d (%s)\n", ret,
            get_hashtable_ret_string(ret));
 
     // Clean the memory from the received command. The key and value pointers
     // are now managed by the hash table.
-    received_command.arg1_size = received_command.arg2_size = 0;
     received_command.arg1 = received_command.arg2 = NULL;
 
     response_command.type = BT_OK;
@@ -111,8 +115,7 @@ static void handle_client(struct ClientEpollEventData *event_data,
   case BT_DEL:
     // Remove the key-value pair corresponding to the key if it exists and
     // return OK, otherwise return ENOTFOUND.
-    ret = hashtable_remove(hashtable, received_command.arg1_size,
-                           received_command.arg1);
+    ret = bd_hashtable_remove(hashtable, received_command.arg1);
     printf("DEL hash table result: %d (%s)\n", ret,
            get_hashtable_ret_string(ret));
 
@@ -130,31 +133,26 @@ static void handle_client(struct ClientEpollEventData *event_data,
     // @TODO: Here we might want to also signal that the value was stored using
     // the binary protocol because in that case we have to actually send EBINARY
     // in the text protocol.
-    ret = hashtable_get(hashtable, received_command.arg1_size,
-                        received_command.arg1, &response_command.arg1_size,
-                        &response_command.arg1);
+    struct BoundedData *get_result = NULL;
+    ret = bd_hashtable_get(hashtable, received_command.arg1, &get_result);
     printf("GET hash table result: %d (%s)\n", ret,
            get_hashtable_ret_string(ret));
 
     if (ret == HT_NOTFOUND) {
       response_command.type = BT_ENOTFOUND;
-      assert(response_command.arg1_size == 0);
-      assert(response_command.arg1 == NULL);
-    } else if (ret == HT_ERROR) {
-      response_command.type = BT_EBIG;
-      assert(response_command.arg1_size == 0);
+      assert(get_result == NULL); // just in case
       assert(response_command.arg1 == NULL);
     } else {
       // Check if the value is valid for a text client.
       if (event_data->connection_type == TEXT &&
-          !is_text_representable(response_command.arg1_size,
-                                 response_command.arg1)) {
+          !bounded_data_is_text_representable(get_result)) {
         response_command.type = BT_EBINARY;
       } else {
+        response_command.arg1 = get_result;
         response_command.type = BT_OK;
       }
-      // arg1_size and arg1 already contain the value size and value for the
-      // corresponding key. It should be freed after being sent to the client.
+      // response_command.arg1 already contains the value for the corresponding
+      // key. It should be freed after being sent to the client.
     }
 
     stats->get_count += 1;
@@ -165,27 +163,26 @@ static void handle_client(struct ClientEpollEventData *event_data,
     // @TODO: Here we might want to also signal that the value was stored using
     // the binary protocol because in that case we have to actually send EBINARY
     // in the text protocol.
-    ret = hashtable_take(hashtable, received_command.arg1_size,
-                         received_command.arg1, &response_command.arg1_size,
-                         &response_command.arg1);
+    struct BoundedData *take_result = NULL;
+    ret = bd_hashtable_take(hashtable, received_command.arg1, &take_result);
     printf("TAKE hash table result: %d (%s)\n", ret,
            get_hashtable_ret_string(ret));
 
     if (ret == HT_NOTFOUND) {
       response_command.type = BT_ENOTFOUND;
-      assert(response_command.arg1_size == 0);
+      assert(take_result == NULL); // just in case.
       assert(response_command.arg1 == NULL);
     } else {
       // Check if the value is valid for a text client.
       if (event_data->connection_type == TEXT &&
-          !is_text_representable(response_command.arg1_size,
-                                 response_command.arg1)) {
+          !bounded_data_is_text_representable(take_result)) {
         response_command.type = BT_EBINARY;
       } else {
+        response_command.arg1 = take_result;
         response_command.type = BT_OK;
       }
-      // arg1_size and arg1 already contain the value size and value for the
-      // corresponding key. It should be freed after being sent to the client.
+      // response_command.arg1 already contains the value for the corresponding
+      // key. It should be freed after being sent to the client.
     }
 
     stats->take_count += 1;
@@ -194,18 +191,20 @@ static void handle_client(struct ClientEpollEventData *event_data,
     // Return OK along with various statistics about the usage of the cache,
     // namely: number of PUTs, number of DELs, number of GETs, number of TAKEs,
     // number of STATSs, number of KEYs (i.e. key-value pairs) stored.
-    generate_stats_response(
-        workers_stats, num_workers, hashtable_key_count(hashtable),
-        &response_command.arg1_size, &response_command.arg1);
+
+    response_command.arg1 = generate_stats_response(
+        workers_stats, num_workers, hashtable_key_count(hashtable));
     response_command.type = BT_OK;
 
-    if (response_command.arg1_size == 0 || response_command.arg1 == NULL) {
+    if (response_command.arg1 == NULL) {
       printf("Error generating the response for the STATS command.\n");
 
       response_command.type = BT_OK;
-      response_command.arg1 = strdup("ERROR GENERATING STATS");
-      response_command.arg1_size = sizeof("ERROR GENERATING STATS");
+      response_command.arg1 =
+          bounded_data_create_from_string_duplicate("ERROR GENERATING STATS");
     }
+
+    bd_hashtable_print(hashtable);
 
     stats->stats_count += 1;
     break;

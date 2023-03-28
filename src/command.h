@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "bounded_data.h"
+
 enum BINARY_TYPES {
   BT_PUT = 11,
   BT_DEL = 12,
@@ -20,11 +22,8 @@ enum BINARY_TYPES {
 struct Command {
   enum BINARY_TYPES type;
 
-  uint32_t arg1_size;
-  char *arg1;
-
-  uint32_t arg2_size;
-  char *arg2;
+  struct BoundedData *arg1;
+  struct BoundedData *arg2;
 };
 
 /* Returns a string representation of the binary type.
