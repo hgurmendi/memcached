@@ -74,7 +74,7 @@ int make_socket_non_blocking(int socket_fd) {
   // Get the flags of the file descriptor by using the `F_GETFL` command.
   flags = fcntl(socket_fd, F_GETFL, 0);
   if (flags == -1) {
-    perror("fcntl");
+    perror("make_socket_non_blocking fcntl 1");
     return -1;
   }
 
@@ -83,7 +83,7 @@ int make_socket_non_blocking(int socket_fd) {
   flags |= O_NONBLOCK;
   status = fcntl(socket_fd, F_SETFL, flags);
   if (status == -1) {
-    perror("fcntl");
+    perror("make_socket_non_blocking fcntl 2");
     return -1;
   }
 
@@ -109,7 +109,7 @@ int create_listen_socket(char *port) {
 
   status = listen(fd, SOMAXCONN);
   if (status == -1) {
-    perror("listen");
+    perror("create_listen_socket listen");
     abort();
   }
 
