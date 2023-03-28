@@ -5,7 +5,7 @@ WORKDIR soi-memcached/
 
 # Install the dependencies.
 RUN apk update
-RUN apk add --no-cache --update gcc libc-dev make
+RUN apk add --no-cache --update gcc libc-dev make clang-extra-tools git
 
 # Copy the source contents into the container.
 COPY ./src .

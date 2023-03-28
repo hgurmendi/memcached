@@ -4,10 +4,10 @@
 #include <sys/sysinfo.h>
 
 #include "bounded_data_hashtable.h"
-#include "new_epoll.h"
-#include "new_worker.h"
+#include "epoll.h"
 #include "parameters.h"
 #include "sockets.h"
+#include "worker.h"
 
 void start_server(char *text_port, char *binary_port);
 

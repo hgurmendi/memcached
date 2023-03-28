@@ -1,5 +1,5 @@
-#ifndef __NEW_WORKER_H__
-#define __NEW_WORKER_H__
+#ifndef __WORKER_H__
+#define __WORKER_H__
 
 #include <pthread.h>
 

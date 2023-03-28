@@ -7,9 +7,9 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#include "new_epoll.h"
-#include "new_worker.h"
+#include "epoll.h"
 #include "sockets.h"
+#include "worker.h"
 
 // Accepts incoming connections
 static void accept_connections_redux(struct WorkerArgs *worker_args,
@@ -96,7 +96,7 @@ void *worker(void *_args) {
     int num_events =
         epoll_wait(args->epoll_fd, &events[0], MAX_EPOLL_EVENTS, -1);
     if (num_events == -1) {
-      perror("new_worker_loop epoll_wait");
+      perror("worker epoll_wait");
       abort();
     }
 

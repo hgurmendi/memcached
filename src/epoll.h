@@ -1,37 +1,32 @@
 #ifndef __EPOLL_H__
 #define __EPOLL_H__
 
+// We need to define _GNU_SOURCE to get NI_MAXHOST and NI_MAXSERV
+#define _GNU_SOURCE
+
 #include <netdb.h>
-#include <sys/epoll.h>
 
 #include "common.h"
 
-#define MAX_EVENTS 64
-
-// @TODO: Change this
-// This is a struct whose memory should be requested by the dispatcher
-// and it should be assigned to epoll_event.data.ptr (which is a pointer to
-// void) and it allows us to store arbitrary data accessible when the event is
-// triggered in an epoll wait
-struct ClientEpollEventData {
-  // File descriptor of the client.
-  int fd;
-  // Connection type of the client.
-  enum ConnectionTypes connection_type;
-  // IP of the client.
-  char host[NI_MAXHOST];
-  // Port of the client.
-  char port[NI_MAXSERV];
+struct EventData {
+  int fd;                               // File descriptor of the client socket.
+  char host[NI_MAXHOST];                // IP address.
+  char port[NI_MAXSERV];                // Port.
+  enum ConnectionTypes connection_type; // Connection type of the client.
 };
 
-/* Properly extracts a pointer to the ClientEpollEventData from the actual
- * `epoll_event` struct.
- */
-struct ClientEpollEventData *get_event_data(struct epoll_event event);
+#define MAX_EPOLL_EVENTS 128
 
-/* Returns true is a "transient" epoll error happened on the event's file
- * descriptor.
- */
-int is_epoll_error(struct epoll_event event);
+// Allocates memory for an uninitialized EventData struct.
+struct EventData *event_data_create();
+
+// Initializes the epoll instance and adds both the text protocol socket and
+// the binary protocol socket to the interest list. Returns the epoll file
+// descriptor.
+int epoll_initialize(int text_fd, int binary_fd);
+
+// Closes the client associated to the given EventData struct and frees the
+// resources of the struct.
+void close_client(struct EventData *event_data);
 
 #endif
