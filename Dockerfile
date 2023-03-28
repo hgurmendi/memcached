@@ -20,5 +20,6 @@ EXPOSE 7666 7667
 COPY ./init.sh .
 RUN chmod +x init.sh
 
-# Run the server
-ENTRYPOINT ["./init.sh"]
+# Commented out the entrypoint in order to try running a VSCode dev container.
+# # Run the server
+# ENTRYPOINT ["./init.sh"]
