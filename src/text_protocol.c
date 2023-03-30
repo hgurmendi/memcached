@@ -21,8 +21,8 @@
 // CLIENT_READ_INCOMPLETE is returned. If an error happens then
 // CLIENT_READ_ERROR is returned.
 static int read_until_newline(struct WorkerArgs *args,
-                              struct EventData *event_data,
                               struct epoll_event *event) {
+  struct EventData *event_data = event->data.ptr;
   ssize_t nread = 0;
 
   while (event_data->total_bytes_read < event_data->read_buffer->size) {
@@ -78,8 +78,8 @@ static int read_until_newline(struct WorkerArgs *args,
 }
 
 void handle_text_client_request(struct WorkerArgs *args,
-                                struct EventData *event_data,
                                 struct epoll_event *event) {
+  struct EventData *event_data = event->data.ptr;
   worker_log(args, "Reading from fd %d (%s)", event_data->fd,
              connection_type_str(event_data->connection_type));
 
@@ -94,7 +94,7 @@ void handle_text_client_request(struct WorkerArgs *args,
     // last time.
   }
 
-  int rv = read_until_newline(args, event_data, event);
+  int rv = read_until_newline(args, event);
   switch (rv) {
   case CLIENT_READ_ERROR:
     worker_log(args, "Error reading from client, closing connection.");

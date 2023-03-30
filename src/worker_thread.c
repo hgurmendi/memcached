@@ -102,7 +102,7 @@ static void handle_client(struct WorkerArgs *args, struct epoll_event *event) {
     worker_log(args, "fd %d (%s) is ready to read", event_data->fd,
                connection_type_str(event_data->connection_type));
     if (event_data->connection_type == TEXT) {
-      handle_text_client_request(args, event_data, event);
+      handle_text_client_request(args, event);
     }
   }
 
