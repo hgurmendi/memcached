@@ -24,6 +24,12 @@ struct WorkerArgs {
   struct WorkerStats *workers_stats; // Usage statistics of the workers.
 };
 
+// Maximum request size for the text protocol.
+#define MAX_TEXT_REQUEST_SIZE 2048
+
+// Buffer size for the text protocol.
+#define TEXT_REQUEST_BUFFER_SIZE (MAX_TEXT_REQUEST_SIZE + 10)
+
 // Worker thread function.
 void *worker(void *_args);
 
@@ -34,5 +40,8 @@ void worker_stats_initialize(struct WorkerStats *worker_stats);
 // corresponding fields. Writes the result in the given destination struct.
 void worker_stats_reduce(struct WorkerStats *workers_stats,
                          int num_worker_stats, struct WorkerStats *destination);
+
+// Logs a message from a worker.
+void worker_log(struct WorkerArgs *args, char *fmt, ...);
 
 #endif

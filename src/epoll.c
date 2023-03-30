@@ -20,6 +20,9 @@ struct EventData *event_data_create() {
   event_data->fd = -1;
   strncpy(event_data->host, "UNINITIALIZED", NI_MAXHOST);
   strncpy(event_data->port, "UNINITIALIZED", NI_MAXSERV);
+  event_data->client_state = READ_READY;
+  event_data->read_buffer = NULL;
+  event_data->total_bytes_read = 0;
 
   return event_data;
 }
@@ -34,6 +37,9 @@ static void event_data_destroy(struct EventData *event_data) {
 // resources of the struct.
 void close_client(struct EventData *event_data) {
   close(event_data->fd);
+  if (event_data->read_buffer != NULL) {
+    bounded_data_destroy(event_data->read_buffer);
+  }
   event_data_destroy(event_data);
 }
 
@@ -91,5 +97,21 @@ char *connection_type_str(enum ConnectionTypes connection_type) {
     return "BINARY";
   default:
     return "UNKNOWN_CONNECTION_TYPE";
+  }
+}
+
+// Returns a string representing the client state.
+char *client_state_str(enum ClientState client_state) {
+  switch (client_state) {
+  case READ_READY:
+    return "READ_READY";
+  case READING:
+    return "READING";
+  case RESPONSE_READY:
+    return "RESPONSE_READY";
+  case RESPONDING:
+    return "RESPONDING";
+  default:
+    return "UNKNOWN_CLIENT_STATE";
   }
 }

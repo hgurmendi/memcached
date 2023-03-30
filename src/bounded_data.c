@@ -52,6 +52,26 @@ struct BoundedData *bounded_data_create_from_string(char *str) {
   return bounded_data_create_from_buffer(str, strlen(str) + 1);
 }
 
+// Allocates memory for a BoundedData instance and for a new buffer with the
+// given size. Returns the BoundedData instance.
+struct BoundedData *bounded_data_create(uint64_t size) {
+  struct BoundedData *new_bounded_data = malloc(sizeof(struct BoundedData));
+  if (new_bounded_data == NULL) {
+    perror("bounded_data_create malloc 1");
+    abort();
+  }
+
+  new_bounded_data->data = malloc(size);
+  if (new_bounded_data->data == NULL) {
+    perror("bounded_data_create malloc 2");
+    free(new_bounded_data);
+    abort();
+  }
+
+  new_bounded_data->size = size;
+  return new_bounded_data;
+}
+
 // True if the given BoundedData instances are equal byte-by-byte, false
 // otherwise.
 bool bounded_data_equals(struct BoundedData *a, struct BoundedData *b) {

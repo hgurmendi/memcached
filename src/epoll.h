@@ -6,6 +6,10 @@
 
 #include <netdb.h>
 
+#include "bounded_data.h"
+
+enum ClientState { READ_READY, READING, RESPONSE_READY, RESPONDING };
+
 enum ConnectionTypes { BINARY, TEXT };
 
 struct EventData {
@@ -13,6 +17,9 @@ struct EventData {
   char host[NI_MAXHOST];                // IP address.
   char port[NI_MAXSERV];                // Port.
   enum ConnectionTypes connection_type; // Connection type of the client.
+  enum ClientState client_state;
+  struct BoundedData *read_buffer;
+  size_t total_bytes_read;
 };
 
 #define MAX_EPOLL_EVENTS 128
@@ -31,5 +38,8 @@ void close_client(struct EventData *event_data);
 
 // Returns a string representing the connection type.
 char *connection_type_str(enum ConnectionTypes connection_type);
+
+// Returns a string representing the client state.
+char *client_state_str(enum ClientState client_state);
 
 #endif
