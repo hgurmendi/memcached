@@ -7,7 +7,8 @@
 #include "epoll.h"
 #include "parameters.h"
 #include "sockets.h"
-#include "worker.h"
+#include "worker_state.h"
+#include "worker_thread.h"
 
 void start_server(char *text_port, char *binary_port);
 

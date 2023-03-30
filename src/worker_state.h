@@ -1,5 +1,5 @@
-#ifndef __WORKER_H__
-#define __WORKER_H__
+#ifndef __WORKER_STATE_H__
+#define __WORKER_STATE_H__
 
 #include <pthread.h>
 
@@ -23,15 +23,6 @@ struct WorkerArgs {
   struct HashTable *hashtable; // Shared hash table instance.
   struct WorkerStats *workers_stats; // Usage statistics of the workers.
 };
-
-// Maximum request size for the text protocol.
-#define MAX_TEXT_REQUEST_SIZE 2048
-
-// Buffer size for the text protocol.
-#define TEXT_REQUEST_BUFFER_SIZE (MAX_TEXT_REQUEST_SIZE + 10)
-
-// Worker thread function.
-void *worker(void *_args);
 
 // Initializes the given WorkerStats struct.
 void worker_stats_initialize(struct WorkerStats *worker_stats);
