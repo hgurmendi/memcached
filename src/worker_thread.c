@@ -15,8 +15,8 @@
 #include "worker_thread.h"
 
 // Accepts incoming connections
-static void accept_connections_redux(struct WorkerArgs *worker_args,
-                                     int incoming_fd) {
+static void accept_connections(struct WorkerArgs *worker_args,
+                               int incoming_fd) {
   struct sockaddr incoming_addr;
   socklen_t incoming_addr_len = sizeof(incoming_addr);
   int client_fd;
@@ -35,7 +35,7 @@ static void accept_connections_redux(struct WorkerArgs *worker_args,
         return;
       } else {
         // We had another arbitrary error.
-        perror("accept_connections_redux accept");
+        perror("accept_connections accept");
         return;
       }
     }
@@ -54,7 +54,7 @@ static void accept_connections_redux(struct WorkerArgs *worker_args,
                          NI_MAXHOST, event_data->port, NI_MAXSERV,
                          NI_NUMERICHOST | NI_NUMERICSERV);
     if (status != 0) {
-      fprintf(stderr, "accept_connections_redux getnameinfo: %s\n",
+      fprintf(stderr, "accept_connections getnameinfo: %s\n",
               gai_strerror(status));
       return;
     }
@@ -89,7 +89,7 @@ static void accept_connections_redux(struct WorkerArgs *worker_args,
     status =
         epoll_ctl(worker_args->epoll_fd, EPOLL_CTL_ADD, event_data->fd, &event);
     if (status == -1) {
-      perror("accept_connections_redux epoll_ctl");
+      perror("accept_connections epoll_ctl");
       abort();
     }
   }
@@ -156,7 +156,7 @@ void *worker(void *_args) {
         // connection.
         // printf("Accepting client connections...\n");
         worker_log(args, "Accepting client connections...");
-        accept_connections_redux(args, event_data->fd);
+        accept_connections(args, event_data->fd);
         // Keep processing ids...
         continue;
       }
