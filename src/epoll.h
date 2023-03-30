@@ -6,7 +6,7 @@
 
 #include <netdb.h>
 
-#include "common.h"
+enum ConnectionTypes { BINARY, TEXT };
 
 struct EventData {
   int fd;                               // File descriptor of the client socket.
@@ -28,5 +28,8 @@ int epoll_initialize(int text_fd, int binary_fd);
 // Closes the client associated to the given EventData struct and frees the
 // resources of the struct.
 void close_client(struct EventData *event_data);
+
+// Returns a string representing the connection type.
+char *connection_type_str(enum ConnectionTypes connection_type);
 
 #endif

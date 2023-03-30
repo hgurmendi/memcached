@@ -4,8 +4,6 @@
 #include <netdb.h>
 #include <sys/epoll.h>
 
-#include "common.h"
-
 #define MAX_EVENTS 64
 
 // @TODO: Change this

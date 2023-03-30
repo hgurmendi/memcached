@@ -81,3 +81,15 @@ int epoll_initialize(int text_fd, int binary_fd) {
 
   return epoll_fd;
 }
+
+// Returns a string representing the connection type.
+char *connection_type_str(enum ConnectionTypes connection_type) {
+  switch (connection_type) {
+  case TEXT:
+    return "TEXT";
+  case BINARY:
+    return "BINARY";
+  default:
+    return "UNKNOWN_CONNECTION_TYPE";
+  }
+}
