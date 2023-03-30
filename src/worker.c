@@ -184,27 +184,36 @@ void handle_text_client_request(struct WorkerArgs *args,
   }
 
   int rv = read_until_newline(args, event_data, event);
-  if (rv == CLIENT_READ_ERROR) {
-    worker_log(args, "ERROR READING FROM TEXT CLIENT! TERMINATING CONNECTION");
+  switch (rv) {
+  case CLIENT_READ_ERROR:
+    worker_log(args, "Error reading from client, closing connection.");
     close_client(event_data);
-  } else if (rv == CLIENT_READ_CLOSED) {
-    worker_log(args, "CLIENT CLOSED CONNECTION");
+    return;
+  case CLIENT_READ_CLOSED:
+    worker_log(args, "Client closed connection.");
     close_client(event_data);
-  } else if (rv == CLIENT_READ_SUCCESS) {
-    worker_log(args, "SUCCESS! HERES WHAT WE GOT: %s",
+    return;
+  case CLIENT_READ_SUCCESS:
+    worker_log(args, "Text protocol read success! <%s>",
                event_data->read_buffer->data);
-    // for now keep reading.
-    // TODO: transition to WRITE_READY and start writing...
-    event->events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-    int rv = epoll_ctl(args->epoll_fd, EPOLL_CTL_MOD, event_data->fd, event);
-    if (rv == -1) {
-      perror("handle_text_client_request epoll_ctl");
-      abort();
-    }
-  } else if (rv == CLIENT_READ_INCOMPLETE) {
-    worker_log(args, "READ INCOMPLETE, WAITING FOR MORE DATA");
-  } else {
-    worker_log(args, "UNKNOWN READ RETURN VALUE, WTF HAPPENED");
+    break;
+  case CLIENT_READ_INCOMPLETE:
+    worker_log(args, "Read incomplete, waiting for more data.");
+    close_client(event_data);
+    return;
+  default:
+    worker_log(args, "Unknown value.");
+    close_client(event_data);
+    return;
+  }
+
+  worker_log(args, "Now we should parse the request and respond, but for now "
+                   "we keep reading");
+  event->events = EPOLLIN | EPOLLET | EPOLLONESHOT;
+  rv = epoll_ctl(args->epoll_fd, EPOLL_CTL_MOD, event_data->fd, event);
+  if (rv == -1) {
+    perror("handle_text_client_request epoll_ctl");
+    return;
   }
 }
 
