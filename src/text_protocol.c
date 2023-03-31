@@ -86,22 +86,22 @@ static int read_until_newline(struct WorkerArgs *args,
   return CLIENT_READ_ERROR;
 }
 
-// Parses the well-formed text request from the client state and stores the
-// response in the EventData struct inside the epoll event.
+// Parses the well-formed text request from the client state and mutates the
+// EventData struct inside the epoll event with the appropriate data for the
+// response.
 static void parse_text_request(struct WorkerArgs *args,
                                struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
-  char *buf_start = event_data->read_buffer->data;
+  char *token = event_data->read_buffer->data;
 
   // Determine the token corresponding to the command.
-  char *command_token = strsep(&buf_start, " ");
+  char *command = strsep(&token, " ");
 
   // By the default the response should be BT_EINVAL and we only replace it when
   // appropriate.
   event_data->response_type = BT_EINVAL;
 
-  if (!strcmp(command_token, binary_type_str(BT_STATS))) {
-    worker_log(args, "Received STATS");
+  if (!strcmp(command, binary_type_str(BT_STATS))) {
     event_data->response_type = BT_OK;
     // TODO implement the STATS command properly
     event_data->write_buffer = bounded_data_create_from_string_duplicate(
@@ -109,13 +109,12 @@ static void parse_text_request(struct WorkerArgs *args,
     return;
   }
 
-  char *first_arg = strsep(&buf_start, " ");
+  char *first_arg = strsep(&token, " ");
   if (first_arg == NULL) {
     return;
   }
 
-  if (!strcmp(command_token, binary_type_str(BT_DEL))) {
-    worker_log(args, "Received DEL key=<%s>", first_arg);
+  if (!strcmp(command, binary_type_str(BT_DEL))) {
     struct BoundedData *key = bounded_data_create_from_string(first_arg);
     int rv = bd_hashtable_remove(args->hashtable, key);
     if (rv == HT_FOUND) {
@@ -123,13 +122,14 @@ static void parse_text_request(struct WorkerArgs *args,
     } else {
       event_data->response_type = BT_ENOTFOUND;
     }
+    // We make it NULL because the string is stored inside the event data's
+    // read_buffer, so it's not a freeable pointer.
     key->data = NULL;
     bounded_data_destroy(key);
     return;
   }
 
-  if (!strcmp(command_token, binary_type_str(BT_GET))) {
-    worker_log(args, "Received GET key=<%s>", first_arg);
+  if (!strcmp(command, binary_type_str(BT_GET))) {
     struct BoundedData *key = bounded_data_create_from_string(first_arg);
     // TODO: after writing, destroy the buffer in `value`.
     struct BoundedData *value = NULL;
@@ -140,13 +140,14 @@ static void parse_text_request(struct WorkerArgs *args,
     } else {
       event_data->response_type = BT_ENOTFOUND;
     }
+    // We make it NULL because the string is stored inside the event data's
+    // read_buffer, so it's not a freeable pointer.
     key->data = NULL;
     bounded_data_destroy(key);
     return;
   }
 
-  if (!strcmp(command_token, binary_type_str(BT_TAKE))) {
-    worker_log(args, "Received TAKE key=<%s>", first_arg);
+  if (!strcmp(command, binary_type_str(BT_TAKE))) {
     struct BoundedData *key = bounded_data_create_from_string(first_arg);
     // TODO: after writing, destroy the buffer in `value`.
     struct BoundedData *value = NULL;
@@ -157,19 +158,20 @@ static void parse_text_request(struct WorkerArgs *args,
     } else {
       event_data->response_type = BT_ENOTFOUND;
     }
+    // We make it NULL because the string is stored inside the event data's
+    // read_buffer, so it's not a freeable pointer.
     key->data = NULL;
     bounded_data_destroy(key);
     return;
   }
 
-  char *second_arg = strsep(&buf_start, " ");
+  char *second_arg = strsep(&token, " ");
   if (second_arg == NULL) {
     return;
   }
 
-  if (!strcmp(command_token, binary_type_str(BT_PUT))) {
-    worker_log(args, "Received PUT key=<%s> val=<%s>", first_arg, second_arg);
-    // The BoundedData instances below are now "owned" by the hash table.
+  if (!strcmp(command, binary_type_str(BT_PUT))) {
+    // The BoundedData instances below will be "owned" by the hash table.
     struct BoundedData *key =
         bounded_data_create_from_string_duplicate(first_arg);
     struct BoundedData *value =
@@ -178,9 +180,6 @@ static void parse_text_request(struct WorkerArgs *args,
     event_data->response_type = BT_OK;
     return;
   }
-
-  // Handle unknown command.
-  worker_log(args, "Received unknown command");
 }
 
 static int handle_text_client_response(struct WorkerArgs *args,
