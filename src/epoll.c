@@ -8,23 +8,30 @@
 #include "epoll.h"
 #include "sockets.h"
 
-// Allocates memory for an uninitialized EventData struct.
-struct EventData *event_data_create() {
+// Allocates memory for an EventData struct with some initial data.
+struct EventData *event_data_create(int fd,
+                                    enum ConnectionType connection_type) {
   struct EventData *event_data = malloc(sizeof(struct EventData));
   if (event_data == NULL) {
     perror("event_data_create malloc");
     abort();
   }
 
-  // Just in case we initialize it with incorrect data.
-  event_data->fd = -1;
-  strncpy(event_data->host, "UNINITIALIZED", NI_MAXHOST);
-  strncpy(event_data->port, "UNINITIALIZED", NI_MAXSERV);
-  event_data->client_state = READ_READY;
+  event_data->fd = fd;
+  event_data->connection_type = connection_type;
+  if (connection_type == TEXT) {
+    // Initial state for a text client.
+    event_data->client_state = READ_READY;
+  } else {
+    // Initial state for a binary client.
+    event_data->client_state = BINARY_READING_COMMAND;
+  }
   event_data->read_buffer = NULL;
   event_data->total_bytes_read = 0;
   event_data->response_type = BT_EINVAL;
   event_data->write_buffer = NULL;
+  strncpy(event_data->host, "UNINITIALIZED", NI_MAXHOST);
+  strncpy(event_data->port, "UNINITIALIZED", NI_MAXSERV);
 
   return event_data;
 }
@@ -58,9 +65,7 @@ int epoll_initialize(int text_fd, int binary_fd) {
   }
 
   // Add the listen socket for the text protocol to the epoll interest list.
-  event_data = event_data_create();
-  event_data->fd = text_fd;
-  event_data->connection_type = TEXT;
+  event_data = event_data_create(text_fd, TEXT);
   strncpy(event_data->host, "text protocol fd", NI_MAXHOST);
   strncpy(event_data->host, "text protocol fd", NI_MAXSERV);
   event.data.ptr = event_data;
@@ -72,9 +77,7 @@ int epoll_initialize(int text_fd, int binary_fd) {
   }
 
   // Add the listen socket for the binary protocol to the epoll interest list.
-  event_data = event_data_create();
-  event_data->fd = binary_fd;
-  event_data->connection_type = BINARY;
+  event_data = event_data_create(binary_fd, BINARY);
   strncpy(event_data->host, "binary protocol fd", NI_MAXHOST);
   strncpy(event_data->host, "binary protocol fd", NI_MAXSERV);
   event.data.ptr = event_data;

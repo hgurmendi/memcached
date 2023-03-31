@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "binary_protocol.h"
 #include "epoll.h"
 #include "sockets.h"
 #include "text_protocol.h"
@@ -42,12 +43,8 @@ static void accept_connections(struct WorkerArgs *worker_args,
 
     // Allocate memory for the event data that we'll store in the epoll
     // instance.
-    struct EventData *event_data = event_data_create();
-
-    // Fill the struct with the relevant data.
-    event_data->fd = client_fd;
-    event_data->connection_type =
-        incoming_fd == worker_args->binary_fd ? BINARY : TEXT;
+    struct EventData *event_data = event_data_create(
+        client_fd, incoming_fd == worker_args->binary_fd ? BINARY : TEXT);
 
     // Get the IP address and port of the client and store it in the struct.
     status = getnameinfo(&incoming_addr, incoming_addr_len, event_data->host,
@@ -99,10 +96,15 @@ static void handle_client(struct WorkerArgs *args, struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
 
   if (event->events & EPOLLIN) {
-    worker_log(args, "fd %d (%s) is ready to read", event_data->fd,
+    worker_log(args, "Reading from fd %d (%s)...", event_data->fd,
                connection_type_str(event_data->connection_type));
+    // TODO: maybe rename these functions below to handle_text_client_read,
+    // handle_binary_client_read and then handle_text_client_write,
+    // handle_binary_client_write.
     if (event_data->connection_type == TEXT) {
       handle_text_client_request(args, event);
+    } else {
+      handle_binary_client_request(args, event);
     }
   }
 
@@ -154,7 +156,6 @@ void *worker(void *_args) {
           event_data->fd == args->binary_fd) {
         // Accept the new client and set them up depending on the type of
         // connection.
-        // printf("Accepting client connections...\n");
         worker_log(args, "Accepting client connections...");
         accept_connections(args, event_data->fd);
         // Keep processing ids...
@@ -163,7 +164,6 @@ void *worker(void *_args) {
 
       // At this point, we have to respond to ready for reading or ready for
       // writing FOR A CLIENT.
-      // printf("Received something from a client...\n");
       worker_log(args, "Received something from a client...");
       handle_client(args, &events[i]);
     }
