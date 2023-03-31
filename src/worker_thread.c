@@ -132,14 +132,14 @@ void *worker(void *_args) {
       if (events[i].events & EPOLLERR) {
         // Error condition happened on the associated file descriptor.
         worker_log(args, "Epoll error");
-        close_client(event_data);
+        event_data_close_client(event_data);
         // Keep processing fds...
         continue;
       }
 
       if (events[i].events & EPOLLHUP) {
         worker_log(args, "Client hanged up");
-        close_client(event_data);
+        event_data_close_client(event_data);
         // Keep processing fds...
         continue;
       }

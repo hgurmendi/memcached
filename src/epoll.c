@@ -23,6 +23,8 @@ struct EventData *event_data_create() {
   event_data->client_state = READ_READY;
   event_data->read_buffer = NULL;
   event_data->total_bytes_read = 0;
+  event_data->response_type = BT_EINVAL;
+  event_data->write_buffer = NULL;
 
   return event_data;
 }
@@ -35,11 +37,9 @@ static void event_data_destroy(struct EventData *event_data) {
 
 // Closes the client associated to the given EventData struct and frees the
 // resources of the struct.
-void close_client(struct EventData *event_data) {
+void event_data_close_client(struct EventData *event_data) {
   close(event_data->fd);
-  if (event_data->read_buffer != NULL) {
-    bounded_data_destroy(event_data->read_buffer);
-  }
+  event_data_reset_client(event_data);
   event_data_destroy(event_data);
 }
 
@@ -117,8 +117,16 @@ char *client_state_str(enum ClientState client_state) {
 }
 
 // Resets the state of the client to handle a new request.
-void reset_client(struct EventData *event_data) {
+void event_data_reset_client(struct EventData *event_data) {
   event_data->client_state = READ_READY;
-  bounded_data_destroy(event_data->read_buffer);
+  if (event_data->read_buffer != NULL) {
+    bounded_data_destroy(event_data->read_buffer);
+    event_data->read_buffer = NULL;
+  }
   event_data->total_bytes_read = 0;
+  event_data->response_type = BT_EINVAL;
+  if (event_data->write_buffer != NULL) {
+    bounded_data_destroy(event_data->write_buffer);
+    event_data->write_buffer = NULL;
+  }
 }

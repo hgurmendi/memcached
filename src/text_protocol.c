@@ -158,11 +158,11 @@ void handle_text_client_request(struct WorkerArgs *args,
   switch (rv) {
   case CLIENT_READ_ERROR:
     worker_log(args, "Error reading from client, closing connection.");
-    close_client(event_data);
+    event_data_close_client(event_data);
     return;
   case CLIENT_READ_CLOSED:
     worker_log(args, "Client closed connection.");
-    close_client(event_data);
+    event_data_close_client(event_data);
     return;
   case CLIENT_READ_SUCCESS:
     worker_log(args, "Text protocol read success! <%s>",
@@ -174,7 +174,7 @@ void handle_text_client_request(struct WorkerArgs *args,
     return;
   default:
     worker_log(args, "Unknown value.");
-    close_client(event_data);
+    event_data_close_client(event_data);
     return;
   }
 
@@ -187,7 +187,7 @@ void handle_text_client_request(struct WorkerArgs *args,
   worker_log(args, "Should (possibly) respond %s", binary_type_str(response));
 
   // reset the client state so we can read again.
-  reset_client(event_data);
+  event_data_reset_client(event_data);
   // re-register him to read again on next stimulus.
   epoll_mod_client(args, event);
 }

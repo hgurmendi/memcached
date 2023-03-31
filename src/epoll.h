@@ -7,6 +7,7 @@
 #include <netdb.h>
 
 #include "bounded_data.h"
+#include "protocol.h"
 
 enum ClientState { READ_READY, READING, WRITE_READY, WRITING };
 
@@ -20,6 +21,8 @@ struct EventData {
   enum ClientState client_state;
   struct BoundedData *read_buffer;
   size_t total_bytes_read;
+  enum BinaryType response_type;
+  struct BoundedData *write_buffer;
 };
 
 #define MAX_EPOLL_EVENTS 128
@@ -34,7 +37,7 @@ int epoll_initialize(int text_fd, int binary_fd);
 
 // Closes the client associated to the given EventData struct and frees the
 // resources of the struct.
-void close_client(struct EventData *event_data);
+void event_data_close_client(struct EventData *event_data);
 
 // Returns a string representing the connection type.
 char *connection_type_str(enum ConnectionType connection_type);
@@ -43,6 +46,6 @@ char *connection_type_str(enum ConnectionType connection_type);
 char *client_state_str(enum ClientState client_state);
 
 // Resets the state of the client to handle a new request.
-void reset_client(struct EventData *event_data);
+void event_data_reset_client(struct EventData *event_data);
 
 #endif
