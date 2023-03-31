@@ -8,10 +8,30 @@
 #include "text_protocol.h"
 #include "worker_state.h"
 
+// Maximum request size for the text protocol.
+#define MAX_TEXT_REQUEST_SIZE 2048
+
+// Buffer size for the text protocol.
+#define TEXT_REQUEST_BUFFER_SIZE (MAX_TEXT_REQUEST_SIZE + 2)
+
 #define CLIENT_READ_ERROR -1
 #define CLIENT_READ_CLOSED 0
 #define CLIENT_READ_SUCCESS 1
 #define CLIENT_READ_INCOMPLETE 2
+
+// Adds the given client event back to the epoll interest list. Returns 0 if
+// successful, -1 otherwise.
+static int epoll_mod_client(struct WorkerArgs *args,
+                            struct epoll_event *event) {
+  struct EventData *event_data = event->data.ptr;
+  event->events = EPOLLIN | EPOLLET | EPOLLONESHOT;
+  int rv = epoll_ctl(args->epoll_fd, EPOLL_CTL_MOD, event_data->fd, event);
+  if (rv == -1) {
+    perror("epoll_mod_client epoll_ctl");
+    return -1;
+  }
+  return 0;
+}
 
 // Reads from the current client until a newline is found or until the client's
 // read buffer is full. If a newline character is found then it's replaced by a
@@ -36,19 +56,7 @@ static int read_until_newline(struct WorkerArgs *args,
     nread = read(event_data->fd, remaining_buffer, remaining_bytes);
     if (nread == -1) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        // The file descriptor is not ready to keep reading. Since we're using
-        // edge-triggered mode with one-shot we should add it again to the epoll
-        // interest list via EPOLL_CTL_MOD.
-        event->events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-        int rv =
-            epoll_ctl(args->epoll_fd, EPOLL_CTL_MOD, event_data->fd, event);
-        if (rv == -1) {
-          perror("read_until_newline epoll_ctl");
-          return CLIENT_READ_ERROR;
-        }
-
-        // If adding it to the epoll interest list was successful, we have to
-        // let the handler know that reading is not done yet.
+        // The client is not ready to ready yet.
         return CLIENT_READ_INCOMPLETE;
       }
 
@@ -110,7 +118,7 @@ void handle_text_client_request(struct WorkerArgs *args,
     break;
   case CLIENT_READ_INCOMPLETE:
     worker_log(args, "Read incomplete, waiting for more data.");
-    close_client(event_data);
+    epoll_mod_client(args, event);
     return;
   default:
     worker_log(args, "Unknown value.");
@@ -120,10 +128,11 @@ void handle_text_client_request(struct WorkerArgs *args,
 
   worker_log(args, "Now we should parse the request and respond, but for now "
                    "we keep reading");
-  event->events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-  rv = epoll_ctl(args->epoll_fd, EPOLL_CTL_MOD, event_data->fd, event);
-  if (rv == -1) {
-    perror("handle_text_client_request epoll_ctl");
-    return;
-  }
+
+  // temporarily clean the read data so we can read again
+  event_data->client_state = READ_READY;
+  bounded_data_destroy(event_data->read_buffer);
+  event_data->total_bytes_read = 0;
+  // re-register him to read again on next stimulus
+  epoll_mod_client(args, event);
 }
