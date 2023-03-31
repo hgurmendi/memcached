@@ -183,6 +183,84 @@ static void parse_text_request(struct WorkerArgs *args,
   worker_log(args, "Received unknown command");
 }
 
+#define CLIENT_WRITE_ERROR -1
+#define CLIENT_WRITE_SUCCESS 1
+#define CLIENT_WRITE_INCOMPLETE 2
+
+static int write_buffer(int fd, void *buffer, size_t buffer_length) {
+  int rv = write(fd, buffer, buffer_length);
+  if (rv == -1) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      // client is not ready to write
+      // re-add the client in the epoll instance waiting for WRITE!
+      return CLIENT_WRITE_INCOMPLETE;
+    }
+
+    // An error happened.
+    perror("write_buffer write");
+    return CLIENT_WRITE_ERROR;
+  } else if (rv < buffer_length) {
+    printf("UNABLE TO WRITE FULL BUFFER PLEASE HANDLE CORRECTLY\n");
+  }
+
+  return CLIENT_WRITE_SUCCESS;
+}
+
+static int handle_text_client_response(struct WorkerArgs *args,
+                                       struct epoll_event *event) {
+  struct EventData *event_data = event->data.ptr;
+
+  char response_prefix[20];
+  char *maybe_content_separator = event_data->write_buffer != NULL ? " " : "";
+  int rv = snprintf(response_prefix, sizeof(response_prefix), "%s%s",
+                    binary_type_str(event_data->response_type),
+                    maybe_content_separator);
+  if (rv < 0) {
+    perror("handle_text_client_response snprintf");
+    return CLIENT_WRITE_ERROR;
+  }
+  size_t response_prefix_size =
+      strnlen(response_prefix, sizeof(response_prefix) - 1);
+
+  rv = write_buffer(event_data->fd, response_prefix, response_prefix_size);
+  if (rv != CLIENT_WRITE_SUCCESS) {
+    // Return if write wasn't successful.
+    return rv;
+  }
+
+  //////////////
+  // Should update the state to know that the prefix was sent.
+  //////////////
+
+  // Only write the content if there is something to write.
+  if (event_data->write_buffer != NULL) {
+    // TODO: Should remove the trailing '\0' from the write buffer, if present?
+    rv = write_buffer(event_data->fd, event_data->write_buffer->data,
+                      event_data->write_buffer->size);
+    if (rv != CLIENT_WRITE_SUCCESS) {
+      // Return if write wasn't successful.
+      return rv;
+    }
+  }
+
+  //////////////
+  // Should update the state to know that the prefix was sent.
+  //////////////
+
+  // Always write the trailing \n.
+  rv = write_buffer(event_data->fd, "\n", 1);
+  if (rv != CLIENT_WRITE_SUCCESS) {
+    // Return if write wasn't successful.
+    return rv;
+  }
+
+  //////////////
+  // Should update the state to know that the prefix was sent.
+  //////////////
+
+  return CLIENT_WRITE_SUCCESS;
+}
+
 void handle_text_client_request(struct WorkerArgs *args,
                                 struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
@@ -234,6 +312,15 @@ void handle_text_client_request(struct WorkerArgs *args,
              binary_type_str(event_data->response_type),
              event_data->write_buffer != NULL ? event_data->write_buffer->data
                                               : "<EMPTY>");
+
+  rv = handle_text_client_response(args, event);
+  if (rv == CLIENT_WRITE_INCOMPLETE) {
+    // Re-register the client in epoll so we can continue writing later.
+    worker_log(args, "FOUND A CLIENT WHOSE WRITE IS INCOMPLETE");
+  } else if (rv == CLIENT_WRITE_ERROR) {
+    event_data_close_client(event_data);
+    return;
+  }
 
   // reset the client state so we can read again.
   event_data_reset_client(event_data);
