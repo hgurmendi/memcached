@@ -106,7 +106,9 @@ struct BoundedData *bounded_data_duplicate(struct BoundedData *bounded_data) {
 
 // De-allocates memory for the given BoundedData instance.
 void bounded_data_destroy(struct BoundedData *bounded_data) {
-  free(bounded_data->data);
+  if (bounded_data->data != NULL) {
+    free(bounded_data->data);
+  }
   free(bounded_data);
 }
 

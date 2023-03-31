@@ -86,10 +86,10 @@ static int read_until_newline(struct WorkerArgs *args,
   return CLIENT_READ_ERROR;
 }
 
-// Parses the well-formed text request from the client state and returns the
-// BinaryType that should be responded. RESPONSE ARGUMENT NOT YET PROVIDED.
-static enum BinaryType parse_text_request(struct WorkerArgs *args,
-                                          struct epoll_event *event) {
+// Parses the well-formed text request from the client state and stores the
+// response in the EventData struct inside the epoll event.
+static void parse_text_request(struct WorkerArgs *args,
+                               struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
   char *buf_start = event_data->read_buffer->data;
 
@@ -101,39 +101,86 @@ static enum BinaryType parse_text_request(struct WorkerArgs *args,
   if (!strcmp(command_token, binary_type_str(BT_PUT))) {
     // Handle PUT.
     if (arg1_token == NULL || arg2_token == NULL) {
-      return BT_EINVAL;
+      event_data->response_type = BT_EINVAL;
+      return;
     }
+
     worker_log(args, "Received PUT key=<%s> val=<%s>", arg1_token, arg2_token);
-    return BT_OK;
+    // The BoundedData instances below are now "owned" by the hash table.
+    struct BoundedData *key =
+        bounded_data_create_from_string_duplicate(arg1_token);
+    struct BoundedData *value =
+        bounded_data_create_from_string_duplicate(arg2_token);
+    bd_hashtable_insert(args->hashtable, key, value);
+    event_data->response_type = BT_OK;
   } else if (!strcmp(command_token, binary_type_str(BT_DEL))) {
     // Handle DEL.
     if (arg1_token == NULL) {
-      return BT_EINVAL;
+      event_data->response_type = BT_EINVAL;
+      return;
     }
+
     worker_log(args, "Received DEL key=<%s>", arg1_token);
-    return BT_OK;
+    struct BoundedData *key = bounded_data_create_from_string(arg1_token);
+    int rv = bd_hashtable_remove(args->hashtable, key);
+    if (rv == HT_FOUND) {
+      event_data->response_type = BT_OK;
+    } else {
+      event_data->response_type = BT_ENOTFOUND;
+    }
+    key->data = NULL;
+    bounded_data_destroy(key);
   } else if (!strcmp(command_token, binary_type_str(BT_GET))) {
     // Handle GET.
     if (arg1_token == NULL) {
-      return BT_EINVAL;
+      event_data->response_type = BT_EINVAL;
+      return;
     }
+
     worker_log(args, "Received GET key=<%s>", arg1_token);
-    return BT_OK;
+    struct BoundedData *key = bounded_data_create_from_string(arg1_token);
+    // TODO: after writing, destroy the buffer in `value`.
+    struct BoundedData *value = NULL;
+    int rv = bd_hashtable_get(args->hashtable, key, &value);
+    if (rv == HT_FOUND) {
+      event_data->response_type = BT_OK;
+      event_data->write_buffer = value;
+    } else {
+      event_data->response_type = BT_ENOTFOUND;
+    }
+    key->data = NULL;
+    bounded_data_destroy(key);
   } else if (!strcmp(command_token, binary_type_str(BT_TAKE))) {
     // Handle TAKE.
     if (arg1_token == NULL) {
-      return BT_EINVAL;
+      event_data->response_type = BT_EINVAL;
+      return;
     }
+
     worker_log(args, "Received TAKE key=<%s>", arg1_token);
-    return BT_OK;
+    struct BoundedData *key = bounded_data_create_from_string(arg1_token);
+    // TODO: after writing, destroy the buffer in `value`.
+    struct BoundedData *value = NULL;
+    int rv = bd_hashtable_take(args->hashtable, key, &value);
+    if (rv == HT_FOUND) {
+      event_data->response_type = BT_OK;
+      event_data->write_buffer = value;
+    } else {
+      event_data->response_type = BT_ENOTFOUND;
+    }
+    key->data = NULL;
+    bounded_data_destroy(key);
   } else if (!strcmp(command_token, binary_type_str(BT_STATS))) {
     // Handle STATS.
     worker_log(args, "Received STATS");
-    return BT_OK;
+    event_data->response_type = BT_OK;
+    // TODO implement the STATS command properly
+    event_data->write_buffer = bounded_data_create_from_string_duplicate(
+        "PUTS=111 DELS=99 GETS=381323 KEYS=132");
   } else {
     // Handle unknown command.
     worker_log(args, "Unknown command");
-    return BT_EINVAL;
+    event_data->response_type = BT_EINVAL;
   }
 }
 
@@ -182,9 +229,12 @@ void handle_text_client_request(struct WorkerArgs *args,
                    "we keep reading");
 
   // Parse the text request.
-  enum BinaryType response = parse_text_request(args, event);
+  parse_text_request(args, event);
 
-  worker_log(args, "Should (possibly) respond %s", binary_type_str(response));
+  worker_log(args, "Should respond '%s %s'",
+             binary_type_str(event_data->response_type),
+             event_data->write_buffer != NULL ? event_data->write_buffer->data
+                                              : "<EMPTY>");
 
   // reset the client state so we can read again.
   event_data_reset_client(event_data);
