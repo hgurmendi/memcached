@@ -7,6 +7,7 @@
 #include "epoll.h"
 #include "text_protocol.h"
 #include "worker_state.h"
+#include "worker_thread.h"
 
 // Maximum request size for the text protocol.
 #define MAX_TEXT_REQUEST_SIZE 2048
@@ -85,6 +86,60 @@ static int read_until_newline(struct WorkerArgs *args,
   return CLIENT_READ_ERROR;
 }
 
+// Parses the well-formed text request from the client state and returns the
+// BinaryType that should be responded. RESPONSE ARGUMENT NOT YET PROVIDED.
+static enum BinaryType parse_text_request(struct WorkerArgs *args,
+                                          struct epoll_event *event) {
+  struct EventData *event_data = event->data.ptr;
+  char *buf_start = event_data->read_buffer->data;
+
+  char *command_token = strsep(&buf_start, " ");
+
+  if (!strcmp(command_token, binary_type_str(BT_PUT))) {
+    char *arg1_token = strsep(&buf_start, " ");
+    if (arg1_token == NULL) {
+      return BT_EINVAL;
+    }
+    char *arg2_token = strsep(&buf_start, " ");
+    if (arg2_token == NULL) {
+      return BT_EINVAL;
+    }
+    // handle PUT
+    worker_log(args, "Received PUT key=<%s> val=<%s>", arg1_token, arg2_token);
+    return BT_OK;
+  } else if (!strcmp(command_token, binary_type_str(BT_DEL))) {
+    char *arg1_token = strsep(&buf_start, " ");
+    if (arg1_token == NULL) {
+      return BT_EINVAL;
+    }
+    // handle DEL
+    worker_log(args, "Received DEL key=<%s>", arg1_token);
+    return BT_OK;
+  } else if (!strcmp(command_token, binary_type_str(BT_GET))) {
+    char *arg1_token = strsep(&buf_start, " ");
+    if (arg1_token == NULL) {
+      return BT_EINVAL;
+    }
+    // handle GET
+    worker_log(args, "Received GET key=<%s>", arg1_token);
+    return BT_OK;
+  } else if (!strcmp(command_token, binary_type_str(BT_TAKE))) {
+    char *arg1_token = strsep(&buf_start, " ");
+    if (arg1_token == NULL) {
+      return BT_EINVAL;
+    }
+    // handle TAKE
+    worker_log(args, "Received TAKE key=<%s>", arg1_token);
+    return BT_OK;
+  } else if (!strcmp(command_token, binary_type_str(BT_STATS))) {
+    worker_log(args, "Received STATS");
+    return BT_OK;
+  } else {
+    worker_log(args, "Unknown command");
+    return BT_EINVAL;
+  }
+}
+
 void handle_text_client_request(struct WorkerArgs *args,
                                 struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
@@ -129,10 +184,13 @@ void handle_text_client_request(struct WorkerArgs *args,
   worker_log(args, "Now we should parse the request and respond, but for now "
                    "we keep reading");
 
-  // temporarily clean the read data so we can read again
-  event_data->client_state = READ_READY;
-  bounded_data_destroy(event_data->read_buffer);
-  event_data->total_bytes_read = 0;
-  // re-register him to read again on next stimulus
+  // Parse the text request.
+  enum BinaryType response = parse_text_request(args, event);
+
+  worker_log(args, "Should (possibly) respond %s", binary_type_str(response));
+
+  // reset the client state so we can read again.
+  reset_client(event_data);
+  // re-register him to read again on next stimulus.
   epoll_mod_client(args, event);
 }

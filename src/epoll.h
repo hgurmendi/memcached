@@ -8,15 +8,15 @@
 
 #include "bounded_data.h"
 
-enum ClientState { READ_READY, READING, RESPONSE_READY, RESPONDING };
+enum ClientState { READ_READY, READING, WRITE_READY, WRITING };
 
-enum ConnectionTypes { BINARY, TEXT };
+enum ConnectionType { BINARY, TEXT };
 
 struct EventData {
-  int fd;                               // File descriptor of the client socket.
-  char host[NI_MAXHOST];                // IP address.
-  char port[NI_MAXSERV];                // Port.
-  enum ConnectionTypes connection_type; // Connection type of the client.
+  int fd;                              // File descriptor of the client socket.
+  char host[NI_MAXHOST];               // IP address.
+  char port[NI_MAXSERV];               // Port.
+  enum ConnectionType connection_type; // Connection type of the client.
   enum ClientState client_state;
   struct BoundedData *read_buffer;
   size_t total_bytes_read;
@@ -37,9 +37,12 @@ int epoll_initialize(int text_fd, int binary_fd);
 void close_client(struct EventData *event_data);
 
 // Returns a string representing the connection type.
-char *connection_type_str(enum ConnectionTypes connection_type);
+char *connection_type_str(enum ConnectionType connection_type);
 
 // Returns a string representing the client state.
 char *client_state_str(enum ClientState client_state);
+
+// Resets the state of the client to handle a new request.
+void reset_client(struct EventData *event_data);
 
 #endif

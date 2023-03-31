@@ -89,7 +89,7 @@ int epoll_initialize(int text_fd, int binary_fd) {
 }
 
 // Returns a string representing the connection type.
-char *connection_type_str(enum ConnectionTypes connection_type) {
+char *connection_type_str(enum ConnectionType connection_type) {
   switch (connection_type) {
   case TEXT:
     return "TEXT";
@@ -107,11 +107,18 @@ char *client_state_str(enum ClientState client_state) {
     return "READ_READY";
   case READING:
     return "READING";
-  case RESPONSE_READY:
-    return "RESPONSE_READY";
-  case RESPONDING:
-    return "RESPONDING";
+  case WRITE_READY:
+    return "WRITE_READY";
+  case WRITING:
+    return "WRITING";
   default:
     return "UNKNOWN_CLIENT_STATE";
   }
+}
+
+// Resets the state of the client to handle a new request.
+void reset_client(struct EventData *event_data) {
+  event_data->client_state = READ_READY;
+  bounded_data_destroy(event_data->read_buffer);
+  event_data->total_bytes_read = 0;
 }
