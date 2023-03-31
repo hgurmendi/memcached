@@ -187,20 +187,38 @@ static void parse_text_request(struct WorkerArgs *args,
 #define CLIENT_WRITE_SUCCESS 1
 #define CLIENT_WRITE_INCOMPLETE 2
 
-static int write_buffer(int fd, void *buffer, size_t buffer_length) {
-  int rv = write(fd, buffer, buffer_length);
-  if (rv == -1) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      // client is not ready to write
-      // re-add the client in the epoll instance waiting for WRITE!
-      return CLIENT_WRITE_INCOMPLETE;
+// Writes the given buffer with the given size into the client socket's file
+// descriptor, assuming that the amount of bytes in the value pointed at by
+// `total_bytes_written` were already sent. If the whole buffer is correctly
+// sent then CLIENT_WRITE_SUCCESS is returned and the value pointed at by
+// `total_bytes_written` is updated to reflect this. If it's not possible to
+// write the whole buffer, the value pointed at by `total_bytes_written` is
+// updated to the new amount written and CLIENT_WRITE_INCOMPLETE is returned. If
+// an error happens then CLIENT_WRITE_ERROR is returned.
+static int write_buffer(int fd, char *buffer, size_t buffer_length,
+                        size_t *total_bytes_written) {
+  while (*total_bytes_written < buffer_length) {
+    char *remaining_buffer = buffer + *total_bytes_written;
+    size_t remaining_bytes = buffer_length - *total_bytes_written;
+    ssize_t nwritten = write(fd, remaining_buffer, remaining_bytes);
+    if (nwritten == -1) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // Client file descriptor is not ready to receive data, we should
+        // continue later.
+        return CLIENT_WRITE_INCOMPLETE;
+      }
+
+      // Another error happened.
+      perror("write_buffer write");
+      return CLIENT_WRITE_ERROR;
     }
 
-    // An error happened.
-    perror("write_buffer write");
-    return CLIENT_WRITE_ERROR;
-  } else if (rv < buffer_length) {
-    printf("UNABLE TO WRITE FULL BUFFER PLEASE HANDLE CORRECTLY\n");
+    // TODO: remove this log after we test the resume behavior.
+    if (nwritten != remaining_bytes) {
+      printf("UNABLE TO WRITE ALL THE CONTENT, WE HAVE TO CONTINUE TRYING\n");
+    }
+
+    *total_bytes_written += nwritten;
   }
 
   return CLIENT_WRITE_SUCCESS;
@@ -222,7 +240,9 @@ static int handle_text_client_response(struct WorkerArgs *args,
   size_t response_prefix_size =
       strnlen(response_prefix, sizeof(response_prefix) - 1);
 
-  rv = write_buffer(event_data->fd, response_prefix, response_prefix_size);
+  size_t total_bytes_written = 0;
+  rv = write_buffer(event_data->fd, response_prefix, response_prefix_size,
+                    &total_bytes_written);
   if (rv != CLIENT_WRITE_SUCCESS) {
     // Return if write wasn't successful.
     return rv;
@@ -234,9 +254,10 @@ static int handle_text_client_response(struct WorkerArgs *args,
 
   // Only write the content if there is something to write.
   if (event_data->write_buffer != NULL) {
+    total_bytes_written = 0;
     // TODO: Should remove the trailing '\0' from the write buffer, if present?
     rv = write_buffer(event_data->fd, event_data->write_buffer->data,
-                      event_data->write_buffer->size);
+                      event_data->write_buffer->size, &total_bytes_written);
     if (rv != CLIENT_WRITE_SUCCESS) {
       // Return if write wasn't successful.
       return rv;
@@ -247,8 +268,9 @@ static int handle_text_client_response(struct WorkerArgs *args,
   // Should update the state to know that the prefix was sent.
   //////////////
 
+  total_bytes_written = 0;
   // Always write the trailing \n.
-  rv = write_buffer(event_data->fd, "\n", 1);
+  rv = write_buffer(event_data->fd, "\n", 1, &total_bytes_written);
   if (rv != CLIENT_WRITE_SUCCESS) {
     // Return if write wasn't successful.
     return rv;
