@@ -5,9 +5,9 @@
 #include <unistd.h>
 
 #include "epoll.h"
+#include "protocol.h"
 #include "text_protocol.h"
 #include "worker_state.h"
-#include "worker_thread.h"
 
 // Maximum request size for the text protocol.
 #define MAX_TEXT_REQUEST_SIZE 2048
@@ -93,48 +93,45 @@ static enum BinaryType parse_text_request(struct WorkerArgs *args,
   struct EventData *event_data = event->data.ptr;
   char *buf_start = event_data->read_buffer->data;
 
+  // Get the tokens.
   char *command_token = strsep(&buf_start, " ");
+  char *arg1_token = strsep(&buf_start, " ");
+  char *arg2_token = strsep(&buf_start, " ");
 
   if (!strcmp(command_token, binary_type_str(BT_PUT))) {
-    char *arg1_token = strsep(&buf_start, " ");
-    if (arg1_token == NULL) {
+    // Handle PUT.
+    if (arg1_token == NULL || arg2_token == NULL) {
       return BT_EINVAL;
     }
-    char *arg2_token = strsep(&buf_start, " ");
-    if (arg2_token == NULL) {
-      return BT_EINVAL;
-    }
-    // handle PUT
     worker_log(args, "Received PUT key=<%s> val=<%s>", arg1_token, arg2_token);
     return BT_OK;
   } else if (!strcmp(command_token, binary_type_str(BT_DEL))) {
-    char *arg1_token = strsep(&buf_start, " ");
+    // Handle DEL.
     if (arg1_token == NULL) {
       return BT_EINVAL;
     }
-    // handle DEL
     worker_log(args, "Received DEL key=<%s>", arg1_token);
     return BT_OK;
   } else if (!strcmp(command_token, binary_type_str(BT_GET))) {
-    char *arg1_token = strsep(&buf_start, " ");
+    // Handle GET.
     if (arg1_token == NULL) {
       return BT_EINVAL;
     }
-    // handle GET
     worker_log(args, "Received GET key=<%s>", arg1_token);
     return BT_OK;
   } else if (!strcmp(command_token, binary_type_str(BT_TAKE))) {
-    char *arg1_token = strsep(&buf_start, " ");
+    // Handle TAKE.
     if (arg1_token == NULL) {
       return BT_EINVAL;
     }
-    // handle TAKE
     worker_log(args, "Received TAKE key=<%s>", arg1_token);
     return BT_OK;
   } else if (!strcmp(command_token, binary_type_str(BT_STATS))) {
+    // Handle STATS.
     worker_log(args, "Received STATS");
     return BT_OK;
   } else {
+    // Handle unknown command.
     worker_log(args, "Unknown command");
     return BT_EINVAL;
   }
