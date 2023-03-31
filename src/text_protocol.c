@@ -94,13 +94,9 @@ static void parse_text_request(struct WorkerArgs *args,
   struct EventData *event_data = event->data.ptr;
   char *token = event_data->read_buffer->data;
 
-  // Determine the token corresponding to the command and its args.
-  char *command = strsep(&token, " ");
-  char *first_arg = strsep(&token, " ");  // Could be NULL.
-  char *second_arg = strsep(&token, " "); // Could be NULL.
+  char *command = strsep(&token, " "); // Should at least be an empty string.
 
-  // By the default the response should be BT_EINVAL and we only replace it when
-  // appropriate.
+  // By the default the response is BT_EINVAL.
   event_data->response_type = BT_EINVAL;
 
   if (!strcmp(command, binary_type_str(BT_STATS))) {
@@ -108,16 +104,18 @@ static void parse_text_request(struct WorkerArgs *args,
     return;
   }
 
+  char *first_arg = strsep(&token, " ");
+  if (first_arg == NULL) {
+    return;
+  }
+
   if (!strcmp(command, binary_type_str(BT_DEL))) {
     struct BoundedData *key = bounded_data_create_from_string(first_arg);
-    int rv = bd_hashtable_remove(args->hashtable, key);
-    if (rv == HT_FOUND) {
-      event_data->response_type = BT_OK;
-    } else {
-      event_data->response_type = BT_ENOTFOUND;
-    }
-    // We make it NULL because the string is stored inside the event data's
-    // read_buffer, so it's not a freeable pointer.
+    handle_del(event_data, args->hashtable, key);
+    // The `key->data` pointer is not freeable through `free` because it points
+    // to the middle of a pointer allocated with `malloc`. So we destroy the
+    // `key` pointer now, but first we have to clear `key->data`, and the
+    // original pointer will be cleared when the client state is reset.
     key->data = NULL;
     bounded_data_destroy(key);
     return;
@@ -125,17 +123,11 @@ static void parse_text_request(struct WorkerArgs *args,
 
   if (!strcmp(command, binary_type_str(BT_GET))) {
     struct BoundedData *key = bounded_data_create_from_string(first_arg);
-    // TODO: after writing, destroy the buffer in `value`.
-    struct BoundedData *value = NULL;
-    int rv = bd_hashtable_get(args->hashtable, key, &value);
-    if (rv == HT_FOUND) {
-      event_data->response_type = BT_OK;
-      event_data->write_buffer = value;
-    } else {
-      event_data->response_type = BT_ENOTFOUND;
-    }
-    // We make it NULL because the string is stored inside the event data's
-    // read_buffer, so it's not a freeable pointer.
+    handle_get(event_data, args->hashtable, key);
+    // The `key->data` pointer is not freeable through `free` because it points
+    // to the middle of a pointer allocated with `malloc`. So we destroy the
+    // `key` pointer now, but first we have to clear `key->data`, and the
+    // original pointer will be cleared when the client state is reset.
     key->data = NULL;
     bounded_data_destroy(key);
     return;
@@ -143,19 +135,18 @@ static void parse_text_request(struct WorkerArgs *args,
 
   if (!strcmp(command, binary_type_str(BT_TAKE))) {
     struct BoundedData *key = bounded_data_create_from_string(first_arg);
-    // TODO: after writing, destroy the buffer in `value`.
-    struct BoundedData *value = NULL;
-    int rv = bd_hashtable_take(args->hashtable, key, &value);
-    if (rv == HT_FOUND) {
-      event_data->response_type = BT_OK;
-      event_data->write_buffer = value;
-    } else {
-      event_data->response_type = BT_ENOTFOUND;
-    }
-    // We make it NULL because the string is stored inside the event data's
-    // read_buffer, so it's not a freeable pointer.
+    handle_take(event_data, args->hashtable, key);
+    // The `key->data` pointer is not freeable through `free` because it points
+    // to the middle of a pointer allocated with `malloc`. So we destroy the
+    // `key` pointer now, but first we have to clear `key->data`, and the
+    // original pointer will be cleared when the client state is reset.
     key->data = NULL;
     bounded_data_destroy(key);
+    return;
+  }
+
+  char *second_arg = strsep(&token, " ");
+  if (second_arg == NULL) {
     return;
   }
 
@@ -165,8 +156,7 @@ static void parse_text_request(struct WorkerArgs *args,
         bounded_data_create_from_string_duplicate(first_arg);
     struct BoundedData *value =
         bounded_data_create_from_string_duplicate(second_arg);
-    bd_hashtable_insert(args->hashtable, key, value);
-    event_data->response_type = BT_OK;
+    handle_put(event_data, args->hashtable, key, value);
     return;
   }
 }

@@ -64,3 +64,52 @@ void handle_stats(struct EventData *event_data, struct HashTable *hashtable) {
   event_data->write_buffer =
       bounded_data_create_from_buffer(buffer, buffer_size);
 }
+
+// Handles the DEL command and mutates the EventData instance accordingly.
+// WARNING: does not free the `key` pointer.
+void handle_del(struct EventData *event_data, struct HashTable *hashtable,
+                struct BoundedData *key) {
+  int rv = bd_hashtable_remove(hashtable, key);
+  if (rv == HT_FOUND) {
+    event_data->response_type = BT_OK;
+  } else {
+    event_data->response_type = BT_ENOTFOUND;
+  }
+}
+
+// Handles the GET command and mutates the EventData instance accordingly.
+// WARNING: does not free the `key` pointer.
+void handle_get(struct EventData *event_data, struct HashTable *hashtable,
+                struct BoundedData *key) {
+  struct BoundedData *value = NULL;
+  int rv = bd_hashtable_get(hashtable, key, &value);
+  if (rv == HT_FOUND) {
+    event_data->response_type = BT_OK;
+    event_data->write_buffer = value;
+  } else {
+    event_data->response_type = BT_ENOTFOUND;
+  }
+}
+
+// Handles the TAKE command and mutates the EventData instance accordingly.
+// WARNING: does not free the `key` pointer.
+void handle_take(struct EventData *event_data, struct HashTable *hashtable,
+                 struct BoundedData *key) {
+  struct BoundedData *value = NULL;
+  int rv = bd_hashtable_take(hashtable, key, &value);
+  if (rv == HT_FOUND) {
+    event_data->response_type = BT_OK;
+    event_data->write_buffer = value;
+  } else {
+    event_data->response_type = BT_ENOTFOUND;
+  }
+}
+
+// Handles the PUT command and mutates the EventData instance accordingly.
+// WARNING: the key and value pointer are owned by the hash table after the
+// operation.
+void handle_put(struct EventData *event_data, struct HashTable *hashtable,
+                struct BoundedData *key, struct BoundedData *value) {
+  bd_hashtable_insert(hashtable, key, value);
+  event_data->response_type = BT_OK;
+}

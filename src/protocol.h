@@ -24,4 +24,25 @@ int write_buffer(int fd, char *buffer, size_t buffer_length,
 // Handles the STATS command and mutates the EventData instance accordingly.
 void handle_stats(struct EventData *event_data, struct HashTable *hashtable);
 
+// Handles the DEL command and mutates the EventData instance accordingly.
+// WARNING: does not free the `key` pointer.
+void handle_del(struct EventData *event_data, struct HashTable *hashtable,
+                struct BoundedData *key);
+
+// Handles the GET command and mutates the EventData instance accordingly.
+// WARNING: does not free the `key` pointer.
+void handle_get(struct EventData *event_data, struct HashTable *hashtable,
+                struct BoundedData *key);
+
+// Handles the TAKE command and mutates the EventData instance accordingly.
+// WARNING: does not free the `key` pointer.
+void handle_take(struct EventData *event_data, struct HashTable *hashtable,
+                 struct BoundedData *key);
+
+// Handles the PUT command and mutates the EventData instance accordingly.
+// WARNING: the key and value pointer are owned by the hash table after the
+// operation.
+void handle_put(struct EventData *event_data, struct HashTable *hashtable,
+                struct BoundedData *key, struct BoundedData *value);
+
 #endif
