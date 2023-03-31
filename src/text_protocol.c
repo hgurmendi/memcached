@@ -22,11 +22,11 @@
 
 // Adds the given client event back to the epoll interest list. Returns 0 if
 // successful, -1 otherwise.
-static int epoll_mod_client(struct WorkerArgs *args,
-                            struct epoll_event *event) {
+static int epoll_mod_client(int epoll_fd, struct epoll_event *event,
+                            uint32_t event_flag) {
   struct EventData *event_data = event->data.ptr;
-  event->events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-  int rv = epoll_ctl(args->epoll_fd, EPOLL_CTL_MOD, event_data->fd, event);
+  event->events = event_flag | EPOLLET | EPOLLONESHOT;
+  int rv = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, event_data->fd, event);
   if (rv == -1) {
     perror("epoll_mod_client epoll_ctl");
     return -1;
@@ -223,59 +223,52 @@ static int handle_text_client_response(struct WorkerArgs *args,
 void handle_text_client_request(struct WorkerArgs *args,
                                 struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
-  worker_log(args, "Reading from fd %d (%s)", event_data->fd,
-             connection_type_str(event_data->connection_type));
 
-  if (event_data->client_state == READ_READY) {
+  switch (event_data->client_state) {
+  case TEXT_READY:
+  case TEXT_READING_INPUT:
+    break;
+  default:
+    worker_log(args, "Invalid state in handle_text_client_request\n");
+    event_data_close_client(event_data);
+    return;
+  }
+
+  // If we didn't start reading from the client yet, prepare everything and
+  // begin.
+  if (event_data->client_state == TEXT_READY) {
     struct BoundedData *read_buffer =
         bounded_data_create(TEXT_REQUEST_BUFFER_SIZE);
     event_data->read_buffer = read_buffer;
     event_data->total_bytes_read = 0;
-    event_data->client_state = READING;
-  } else if (event_data->client_state == READING) {
-    // do nothing, calling the read_until_newline function should pick up from
-    // last time.
+    event_data->client_state = TEXT_READING_INPUT;
   }
 
+  // Read until a newline is found.
   int rv = read_until_newline(args, event);
   switch (rv) {
-  case CLIENT_READ_ERROR:
-    worker_log(args, "Error reading from client, closing connection.");
-    event_data_close_client(event_data);
-    return;
-  case CLIENT_READ_CLOSED:
-    worker_log(args, "Client closed connection.");
-    event_data_close_client(event_data);
-    return;
   case CLIENT_READ_SUCCESS:
-    worker_log(args, "Text protocol read success! <%s>",
-               event_data->read_buffer->data);
     break;
   case CLIENT_READ_INCOMPLETE:
     worker_log(args, "Read incomplete, waiting for more data.");
-    epoll_mod_client(args, event);
+    epoll_mod_client(args->epoll_fd, event, EPOLLIN);
     return;
+  case CLIENT_READ_CLOSED:
+    worker_log(args, "Client closed the connection.");
+  case CLIENT_READ_ERROR:
   default:
-    worker_log(args, "Unknown value.");
     event_data_close_client(event_data);
     return;
   }
 
-  worker_log(args, "Now we should parse the request and respond, but for now "
-                   "we keep reading");
-
   // Parse the text request.
   parse_text_request(args, event);
-
-  worker_log(args, "Should respond '%s %s'",
-             binary_type_str(event_data->response_type),
-             event_data->write_buffer != NULL ? event_data->write_buffer->data
-                                              : "<EMPTY>");
 
   rv = handle_text_client_response(args, event);
   if (rv == CLIENT_WRITE_INCOMPLETE) {
     // Re-register the client in epoll so we can continue writing later.
     worker_log(args, "FOUND A CLIENT WHOSE WRITE IS INCOMPLETE");
+    epoll_mod_client(args->epoll_fd, event, EPOLLOUT);
   } else if (rv == CLIENT_WRITE_ERROR) {
     event_data_close_client(event_data);
     return;
@@ -284,5 +277,5 @@ void handle_text_client_request(struct WorkerArgs *args,
   // reset the client state so we can read again.
   event_data_reset_client(event_data);
   // re-register him to read again on next stimulus.
-  epoll_mod_client(args, event);
+  epoll_mod_client(args->epoll_fd, event, EPOLLIN);
 }

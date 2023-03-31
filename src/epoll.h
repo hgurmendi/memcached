@@ -11,11 +11,12 @@
 
 enum ClientState {
   // Text client states, in order:
-  READ_READY,
-  READING,
-  WRITE_READY,
-  WRITING,
+  TEXT_READY,
+  TEXT_READING_INPUT,
+  TEXT_WRITING_COMMAND,
+  TEXT_WRITING_CONTENT,
   // Binary client states, in order:
+  BINARY_READY,
   BINARY_READING_COMMAND,
   BINARY_READING_ARG1_SIZE,
   BINARY_READING_ARG1_DATA,

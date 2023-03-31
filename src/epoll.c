@@ -8,6 +8,17 @@
 #include "epoll.h"
 #include "sockets.h"
 
+// Resets the client state for the given EventData instance.
+static void event_data_reset_client_state(struct EventData *event_data) {
+  if (event_data->connection_type == TEXT) {
+    // Initial state for a text client.
+    event_data->client_state = TEXT_READY;
+  } else {
+    // Initial state for a binary client.
+    event_data->client_state = BINARY_READY;
+  }
+}
+
 // Allocates memory for an EventData struct with some initial data.
 struct EventData *event_data_create(int fd,
                                     enum ConnectionType connection_type) {
@@ -19,13 +30,7 @@ struct EventData *event_data_create(int fd,
 
   event_data->fd = fd;
   event_data->connection_type = connection_type;
-  if (connection_type == TEXT) {
-    // Initial state for a text client.
-    event_data->client_state = READ_READY;
-  } else {
-    // Initial state for a binary client.
-    event_data->client_state = BINARY_READING_COMMAND;
-  }
+  event_data_reset_client_state(event_data);
   event_data->read_buffer = NULL;
   event_data->total_bytes_read = 0;
   event_data->response_type = BT_EINVAL;
@@ -106,14 +111,32 @@ char *connection_type_str(enum ConnectionType connection_type) {
 // Returns a string representing the client state.
 char *client_state_str(enum ClientState client_state) {
   switch (client_state) {
-  case READ_READY:
-    return "READ_READY";
-  case READING:
-    return "READING";
-  case WRITE_READY:
-    return "WRITE_READY";
-  case WRITING:
-    return "WRITING";
+  case TEXT_READY:
+    return "TEXT_READY";
+  case TEXT_READING_INPUT:
+    return "TEXT_READING_INPUT";
+  case TEXT_WRITING_COMMAND:
+    return "TEXT_WRITING_COMMAND";
+  case TEXT_WRITING_CONTENT:
+    return "TEXT_WRITING_CONTENT";
+  case BINARY_READY:
+    return "BINARY_READY";
+  case BINARY_READING_COMMAND:
+    return "BINARY_READING_COMMAND";
+  case BINARY_READING_ARG1_SIZE:
+    return "BINARY_READING_ARG1_SIZE";
+  case BINARY_READING_ARG1_DATA:
+    return "BINARY_READING_ARG1_DATA";
+  case BINARY_READING_ARG2_SIZE:
+    return "BINARY_READING_ARG2_SIZE";
+  case BINARY_READING_ARG2_DATA:
+    return "BINARY_READING_ARG2_DATA";
+  case BINARY_WRITING_COMMAND:
+    return "BINARY_WRITING_COMMAND";
+  case BINARY_WRITING_CONTENT_SIZE:
+    return "BINARY_WRITING_CONTENT_SIZE";
+  case BINARY_WRITING_CONTENT_DATA:
+    return "BINARY_WRITING_CONTENT_DATA";
   default:
     return "UNKNOWN_CLIENT_STATE";
   }
@@ -121,7 +144,7 @@ char *client_state_str(enum ClientState client_state) {
 
 // Resets the state of the client to handle a new request.
 void event_data_reset_client(struct EventData *event_data) {
-  event_data->client_state = READ_READY;
+  event_data_reset_client_state(event_data);
   if (event_data->read_buffer != NULL) {
     bounded_data_destroy(event_data->read_buffer);
     event_data->read_buffer = NULL;
