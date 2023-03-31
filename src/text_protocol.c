@@ -93,35 +93,30 @@ static void parse_text_request(struct WorkerArgs *args,
   struct EventData *event_data = event->data.ptr;
   char *buf_start = event_data->read_buffer->data;
 
-  // Get the tokens.
+  // Determine the token corresponding to the command.
   char *command_token = strsep(&buf_start, " ");
-  char *arg1_token = strsep(&buf_start, " ");
-  char *arg2_token = strsep(&buf_start, " ");
 
-  if (!strcmp(command_token, binary_type_str(BT_PUT))) {
-    // Handle PUT.
-    if (arg1_token == NULL || arg2_token == NULL) {
-      event_data->response_type = BT_EINVAL;
-      return;
-    }
+  // By the default the response should be BT_EINVAL and we only replace it when
+  // appropriate.
+  event_data->response_type = BT_EINVAL;
 
-    worker_log(args, "Received PUT key=<%s> val=<%s>", arg1_token, arg2_token);
-    // The BoundedData instances below are now "owned" by the hash table.
-    struct BoundedData *key =
-        bounded_data_create_from_string_duplicate(arg1_token);
-    struct BoundedData *value =
-        bounded_data_create_from_string_duplicate(arg2_token);
-    bd_hashtable_insert(args->hashtable, key, value);
+  if (!strcmp(command_token, binary_type_str(BT_STATS))) {
+    worker_log(args, "Received STATS");
     event_data->response_type = BT_OK;
-  } else if (!strcmp(command_token, binary_type_str(BT_DEL))) {
-    // Handle DEL.
-    if (arg1_token == NULL) {
-      event_data->response_type = BT_EINVAL;
-      return;
-    }
+    // TODO implement the STATS command properly
+    event_data->write_buffer = bounded_data_create_from_string_duplicate(
+        "PUTS=111 DELS=99 GETS=381323 KEYS=132");
+    return;
+  }
 
-    worker_log(args, "Received DEL key=<%s>", arg1_token);
-    struct BoundedData *key = bounded_data_create_from_string(arg1_token);
+  char *first_arg = strsep(&buf_start, " ");
+  if (first_arg == NULL) {
+    return;
+  }
+
+  if (!strcmp(command_token, binary_type_str(BT_DEL))) {
+    worker_log(args, "Received DEL key=<%s>", first_arg);
+    struct BoundedData *key = bounded_data_create_from_string(first_arg);
     int rv = bd_hashtable_remove(args->hashtable, key);
     if (rv == HT_FOUND) {
       event_data->response_type = BT_OK;
@@ -130,15 +125,12 @@ static void parse_text_request(struct WorkerArgs *args,
     }
     key->data = NULL;
     bounded_data_destroy(key);
-  } else if (!strcmp(command_token, binary_type_str(BT_GET))) {
-    // Handle GET.
-    if (arg1_token == NULL) {
-      event_data->response_type = BT_EINVAL;
-      return;
-    }
+    return;
+  }
 
-    worker_log(args, "Received GET key=<%s>", arg1_token);
-    struct BoundedData *key = bounded_data_create_from_string(arg1_token);
+  if (!strcmp(command_token, binary_type_str(BT_GET))) {
+    worker_log(args, "Received GET key=<%s>", first_arg);
+    struct BoundedData *key = bounded_data_create_from_string(first_arg);
     // TODO: after writing, destroy the buffer in `value`.
     struct BoundedData *value = NULL;
     int rv = bd_hashtable_get(args->hashtable, key, &value);
@@ -150,15 +142,12 @@ static void parse_text_request(struct WorkerArgs *args,
     }
     key->data = NULL;
     bounded_data_destroy(key);
-  } else if (!strcmp(command_token, binary_type_str(BT_TAKE))) {
-    // Handle TAKE.
-    if (arg1_token == NULL) {
-      event_data->response_type = BT_EINVAL;
-      return;
-    }
+    return;
+  }
 
-    worker_log(args, "Received TAKE key=<%s>", arg1_token);
-    struct BoundedData *key = bounded_data_create_from_string(arg1_token);
+  if (!strcmp(command_token, binary_type_str(BT_TAKE))) {
+    worker_log(args, "Received TAKE key=<%s>", first_arg);
+    struct BoundedData *key = bounded_data_create_from_string(first_arg);
     // TODO: after writing, destroy the buffer in `value`.
     struct BoundedData *value = NULL;
     int rv = bd_hashtable_take(args->hashtable, key, &value);
@@ -170,18 +159,28 @@ static void parse_text_request(struct WorkerArgs *args,
     }
     key->data = NULL;
     bounded_data_destroy(key);
-  } else if (!strcmp(command_token, binary_type_str(BT_STATS))) {
-    // Handle STATS.
-    worker_log(args, "Received STATS");
-    event_data->response_type = BT_OK;
-    // TODO implement the STATS command properly
-    event_data->write_buffer = bounded_data_create_from_string_duplicate(
-        "PUTS=111 DELS=99 GETS=381323 KEYS=132");
-  } else {
-    // Handle unknown command.
-    worker_log(args, "Unknown command");
-    event_data->response_type = BT_EINVAL;
+    return;
   }
+
+  char *second_arg = strsep(&buf_start, " ");
+  if (second_arg == NULL) {
+    return;
+  }
+
+  if (!strcmp(command_token, binary_type_str(BT_PUT))) {
+    worker_log(args, "Received PUT key=<%s> val=<%s>", first_arg, second_arg);
+    // The BoundedData instances below are now "owned" by the hash table.
+    struct BoundedData *key =
+        bounded_data_create_from_string_duplicate(first_arg);
+    struct BoundedData *value =
+        bounded_data_create_from_string_duplicate(second_arg);
+    bd_hashtable_insert(args->hashtable, key, value);
+    event_data->response_type = BT_OK;
+    return;
+  }
+
+  // Handle unknown command.
+  worker_log(args, "Received unknown command");
 }
 
 void handle_text_client_request(struct WorkerArgs *args,
