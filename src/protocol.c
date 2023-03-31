@@ -1,43 +1,10 @@
 #include <errno.h>     // for errno
 #include <stdio.h>     // for perror
+#include <stdlib.h>    // for malloc
 #include <sys/types.h> // for ssize_t
 #include <unistd.h>    // for write
 
 #include "protocol.h"
-
-// Returns a string representation of the Binary Type.
-char *binary_type_str(enum BinaryType binary_type) {
-  switch (binary_type) {
-  case BT_PUT:
-    return "PUT";
-  case BT_DEL:
-    return "DEL";
-  case BT_GET:
-    return "GET";
-  case BT_TAKE:
-    return "TAKE";
-  case BT_STATS:
-    return "STATS";
-  case BT_OK:
-    return "OK";
-  case BT_EINVAL:
-    return "EINVAL";
-  case BT_ENOTFOUND:
-    return "ENOTFOUND";
-  case BT_EBINARY:
-    return "EBINARY";
-  case BT_EBIG:
-    return "EBIG";
-  case BT_EUNK:
-    return "EUNK";
-  default:
-    return "UNKNOWN_BINARY_TYPE";
-  }
-}
-
-#define CLIENT_WRITE_ERROR -1
-#define CLIENT_WRITE_SUCCESS 1
-#define CLIENT_WRITE_INCOMPLETE 2
 
 // Writes the given buffer with the given size into the client socket's file
 // descriptor, assuming that the amount of bytes in the value pointed at by
@@ -74,4 +41,26 @@ int write_buffer(int fd, char *buffer, size_t buffer_length,
   }
 
   return CLIENT_WRITE_SUCCESS;
+}
+
+// Handles the STATS command and mutates the EventData instance accordingly.
+void handle_stats(struct EventData *event_data, struct HashTable *hashtable) {
+  uint64_t num_keys = bd_hashtable_key_count(hashtable);
+
+  // Figure out the size of the buffer first.
+  int buffer_size = snprintf(NULL, 0, "PUTS=%ld DELS=%ld GETS=%ld KEYS=%ld",
+                             420UL, 69UL, 42069UL, num_keys) +
+                    1;
+  char *buffer = malloc(buffer_size);
+  if (buffer == NULL) {
+    perror("handle_stats mallloc");
+    abort();
+  }
+  // Then write to the buffer.
+  snprintf(buffer, buffer_size, "PUTS=%ld DELS=%ld GETS=%ld KEYS=%ld", 420UL,
+           69UL, 42069UL, num_keys);
+
+  event_data->response_type = BT_OK;
+  event_data->write_buffer =
+      bounded_data_create_from_buffer(buffer, buffer_size);
 }

@@ -21,4 +21,6 @@ void bd_hashtable_print(struct HashTable *hashtable);
 
 void bd_hashtable_destroy(struct HashTable *hashtable);
 
+uint64_t bd_hashtable_key_count(struct HashTable *hashtable);
+
 #endif

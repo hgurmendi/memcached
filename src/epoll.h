@@ -4,10 +4,10 @@
 // We need to define _GNU_SOURCE to get NI_MAXHOST and NI_MAXSERV
 #define _GNU_SOURCE
 
-#include <netdb.h>
+#include <netdb.h> // for NI_MAXHOST
 
-#include "bounded_data.h"
-#include "protocol.h"
+#include "binary_type.h"  // for struct BinaryType
+#include "bounded_data.h" // for struct BoundedData
 
 enum ClientState { READ_READY, READING, WRITE_READY, WRITING };
 

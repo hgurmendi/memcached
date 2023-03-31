@@ -94,23 +94,17 @@ static void parse_text_request(struct WorkerArgs *args,
   struct EventData *event_data = event->data.ptr;
   char *token = event_data->read_buffer->data;
 
-  // Determine the token corresponding to the command.
+  // Determine the token corresponding to the command and its args.
   char *command = strsep(&token, " ");
+  char *first_arg = strsep(&token, " ");  // Could be NULL.
+  char *second_arg = strsep(&token, " "); // Could be NULL.
 
   // By the default the response should be BT_EINVAL and we only replace it when
   // appropriate.
   event_data->response_type = BT_EINVAL;
 
   if (!strcmp(command, binary_type_str(BT_STATS))) {
-    event_data->response_type = BT_OK;
-    // TODO implement the STATS command properly
-    event_data->write_buffer = bounded_data_create_from_string_duplicate(
-        "PUTS=111 DELS=99 GETS=381323 KEYS=132");
-    return;
-  }
-
-  char *first_arg = strsep(&token, " ");
-  if (first_arg == NULL) {
+    handle_stats(event_data, args->hashtable);
     return;
   }
 
@@ -162,11 +156,6 @@ static void parse_text_request(struct WorkerArgs *args,
     // read_buffer, so it's not a freeable pointer.
     key->data = NULL;
     bounded_data_destroy(key);
-    return;
-  }
-
-  char *second_arg = strsep(&token, " ");
-  if (second_arg == NULL) {
     return;
   }
 
