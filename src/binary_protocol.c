@@ -10,7 +10,7 @@ void handle_binary_client_response(struct WorkerArgs *args,
   printf("Weee writing the response!\n");
 
   printf("We should return command <%s>\n",
-         binary_type_str(event_data->command_type));
+         binary_type_str(event_data->response_type));
 
   if (event_data->response_content != NULL) {
     struct BoundedData *safe_to_print_content =

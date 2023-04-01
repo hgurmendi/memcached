@@ -99,27 +99,29 @@ int read_buffer(int fd, char *buffer, size_t buffer_size,
   return CLIENT_READ_SUCCESS;
 }
 
+#define STATS_CONTENT_MAX_SIZE 256
+
 // Handles the STATS command and mutates the EventData instance accordingly.
 void handle_stats(struct EventData *event_data, struct HashTable *hashtable) {
+  char stats_content[STATS_CONTENT_MAX_SIZE];
+
+  // TODO: fill the rest later.
+  uint64_t num_puts = 420;
+  uint64_t num_dels = 69;
+  uint64_t num_gets = 42069;
+  uint64_t num_takes = 123;
+  uint64_t num_stats = 3010;
   uint64_t num_keys = bd_hashtable_key_count(hashtable);
 
-  // Figure out the size of the buffer first.
-  int buffer_size = snprintf(NULL, 0, "PUTS=%ld DELS=%ld GETS=%ld KEYS=%ld",
-                             420UL, 69UL, 42069UL, num_keys) +
-                    1;
-  char *buffer = malloc(buffer_size);
-  if (buffer == NULL) {
-    perror("handle_stats mallloc");
-    abort();
-  }
-  // Then write to the buffer.
-  snprintf(buffer, buffer_size, "PUTS=%ld DELS=%ld GETS=%ld KEYS=%ld", 420UL,
-           69UL, 42069UL, num_keys);
+  int bytes_written =
+      snprintf(stats_content, STATS_CONTENT_MAX_SIZE,
+               "PUTS=%ld DELS=%ld GETS=%ld TAKES=%ld STATS=%ld KEYS=%ld",
+               num_puts, num_dels, num_gets, num_takes, num_stats, num_keys);
 
   event_data->response_type = BT_OK;
-  // TODO: should exclude the trailing '\0'?
+  // The response content doesn't include the trailing '\0'.
   event_data->response_content =
-      bounded_data_create_from_buffer(buffer, buffer_size);
+      bounded_data_create_from_buffer_duplicate(stats_content, bytes_written);
 }
 
 // Handles the DEL command and mutates the EventData instance accordingly.
