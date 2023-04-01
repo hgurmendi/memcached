@@ -219,8 +219,8 @@ static int write_newline(struct EventData *event_data) {
                       &(event_data->total_bytes_written));
 }
 
-static int handle_text_client_response(struct WorkerArgs *args,
-                                       struct epoll_event *event) {
+int handle_text_client_response(struct WorkerArgs *args,
+                                struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
   int rv;
 

@@ -97,11 +97,9 @@ static void handle_client(struct WorkerArgs *args, struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
 
   if (event->events & EPOLLIN) {
-    worker_log(args, "Reading from fd %d (%s)...", event_data->fd,
-               connection_type_str(event_data->connection_type));
-    // TODO: maybe rename these functions below to handle_text_client_read,
-    // handle_binary_client_read and then handle_text_client_write,
-    // handle_binary_client_write.
+    worker_log(args, "fd %d (%s) is ready to read (state %s)...",
+               event_data->fd, connection_type_str(event_data->connection_type),
+               client_state_str(event_data->client_state));
     if (event_data->connection_type == TEXT) {
       handle_text_client_request(args, event);
     } else {
@@ -110,9 +108,14 @@ static void handle_client(struct WorkerArgs *args, struct epoll_event *event) {
   }
 
   if (event->events & EPOLLOUT) {
-    worker_log(args, "fd %d (%s) is ready to write", event_data->fd,
-               connection_type_str(event_data->connection_type));
-    worker_log(args, "not ready to handle epoll for writing yet!");
+    worker_log(args, "fd %d (%s) is ready to write (state %s)...",
+               event_data->fd, connection_type_str(event_data->connection_type),
+               client_state_str(event_data->client_state));
+    if (event_data->connection_type == TEXT) {
+      handle_text_client_response(args, event);
+    } else {
+      handle_binary_client_response(args, event);
+    }
   }
 }
 

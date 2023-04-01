@@ -4,10 +4,29 @@
 #include "epoll.h"    // for struct EventData
 #include "protocol.h" // for read_buffer
 
+// Handles an unsuccessful read from a binary client.
+static void handle_unsuccessful_write(int rv, struct WorkerArgs *args,
+                                      struct epoll_event *event) {
+  struct EventData *event_data = event->data.ptr;
+
+  if (rv == CLIENT_WRITE_INCOMPLETE) {
+    worker_log(args, "Write incomplete while in state <%s>, waiting for more",
+               client_state_str(event_data->client_state));
+    epoll_mod_client(args->epoll_fd, event, EPOLLOUT);
+    return;
+  } else if (rv == CLIENT_WRITE_ERROR) {
+    worker_log(args, "Error when writing to client.");
+    event_data_close_client(event_data);
+    return;
+  }
+}
+
 void handle_binary_client_response(struct WorkerArgs *args,
                                    struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
+  int rv;
 
+  // Make sure we are entering in a valid state.
   switch (event_data->client_state) {
   case BINARY_WRITING_COMMAND:
   case BINARY_WRITING_CONTENT_DATA:
@@ -20,42 +39,61 @@ void handle_binary_client_response(struct WorkerArgs *args,
     return;
   }
 
-  int rv;
-  size_t total_bytes_written;
+  // Start handling the response by going through all the states in order.
 
   if (event_data->client_state == BINARY_WRITING_COMMAND) {
-    total_bytes_written = 0;
     int rv = write_buffer(event_data->fd, &(event_data->response_type), 1,
-                          &total_bytes_written);
+                          &(event_data->total_bytes_written));
     if (rv != CLIENT_WRITE_SUCCESS) {
-      printf("Error writing command\n");
+      handle_unsuccessful_write(rv, args, event);
       return;
     }
+
+    // Reset the total bytes written counter and determine the next state
+    // depending on whether the response has additional content or not.
+
+    // - If the command is STATS then we can handle it immediately and start
+    // writing the response, so we transition to BINARY_WRITING_COMMAND.
+    // - If the command is DEL, GET, TAKE or PUT then we need to parse at least
+    // one more command, so we transition to BINARY_READING_ARG1_SIZE.
+    // - In any other case, the received command is invalid and we have to write
+    // an EINVALID response, so we transition to BINARY_WRITING_COMMAND.
+
+    event_data->total_bytes_written = 0;
     if (event_data->response_content != NULL) {
       event_data->client_state = BINARY_WRITING_CONTENT_SIZE;
+    } else {
+      // we're done?
     }
   }
 
   if (event_data->client_state == BINARY_WRITING_CONTENT_SIZE) {
     uint32_t content_size = htonl(event_data->response_content->size);
-    total_bytes_written = 0;
     rv = write_buffer(event_data->fd, (char *)&content_size,
-                      sizeof(content_size), &total_bytes_written);
+                      sizeof(content_size), &(event_data->total_bytes_written));
     if (rv != CLIENT_WRITE_SUCCESS) {
-      printf("Error writing content size\n");
+      handle_unsuccessful_write(rv, args, event);
       return;
     }
+
+    // Reset the total bytes written counter and transition uncondinitionally to
+    // BINARY_WRITING_CONTENT_DATA because we have to write the contents of the
+    // response.
+    event_data->total_bytes_written = 0;
     event_data->client_state = BINARY_WRITING_CONTENT_DATA;
   }
 
   if (event_data->client_state == BINARY_WRITING_CONTENT_DATA) {
-    total_bytes_written = 0;
     rv = write_buffer(event_data->fd, event_data->response_content->data,
-                      event_data->response_content->size, &total_bytes_written);
+                      event_data->response_content->size,
+                      &(event_data->total_bytes_written));
     if (rv != CLIENT_WRITE_SUCCESS) {
-      printf("Error writing content size\n");
+      handle_unsuccessful_write(rv, args, event);
       return;
     }
+
+    // At this point we successfully finished writing the contents of the
+    // response. We have to re-register the client so we can start reading.
   }
 }
 
@@ -102,7 +140,7 @@ void handle_binary_client_request(struct WorkerArgs *args,
     break;
   }
 
-  // Start handling the request with all client states in order.
+  // Start handling the request by going through all the states in order.
 
   if (event_data->client_state == BINARY_READY) {
     // Reset the total bytes read counter and transition unconditionally to
@@ -267,6 +305,8 @@ void handle_binary_client_request(struct WorkerArgs *args,
   }
 
   if (event_data->client_state == BINARY_WRITING_COMMAND) {
+    // Reset the total bytes written and start handling the response.
+    event_data->total_bytes_written = 0;
     handle_binary_client_response(args, event);
     return;
   }
