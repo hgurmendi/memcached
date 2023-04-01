@@ -16,7 +16,7 @@
 #define MAX_TEXT_REQUEST_SIZE 2048
 
 // Buffer size for the text protocol.
-#define TEXT_REQUEST_BUFFER_SIZE (MAX_TEXT_REQUEST_SIZE + 2)
+#define TEXT_REQUEST_BUFFER_SIZE (MAX_TEXT_REQUEST_SIZE + 5)
 
 #define CLIENT_READ_ERROR -1
 #define CLIENT_READ_CLOSED 0
@@ -37,22 +37,22 @@ static int epoll_mod_client(int epoll_fd, struct epoll_event *event,
   return 0;
 }
 
-// Reads from the current client until a newline is found or until the client's
-// read buffer is full. If a newline character is found then it's replaced by a
-// null character and CLIENT_READ_SUCCESS is returned. If the client closes the
-// connection then CLIENT_READ_CLOSED is returned. If the client's read buffer
-// has some space in it and the client is not ready for reading then
-// CLIENT_READ_INCOMPLETE is returned. If an error happens then
-// CLIENT_READ_ERROR is returned.
+// Reads from the current client until a newline is found or until the maximum
+// request size (which should be smaller than the size of the given buffer). If
+// a newline character is found then it's replaced by a null character and
+// CLIENT_READ_SUCCESS is returned. If the client closes the connection then
+// CLIENT_READ_CLOSED is returned. If the client's read buffer has some space in
+// it and the client is not ready for reading then CLIENT_READ_INCOMPLETE is
+// returned. If an error happens then CLIENT_READ_ERROR is returned.
 static int read_until_newline(struct WorkerArgs *args,
                               struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
   ssize_t nread = 0;
 
-  while (event_data->total_bytes_read < event_data->read_buffer->size) {
+  while (event_data->total_bytes_read < MAX_TEXT_REQUEST_SIZE) {
     // Remaining amount of bytes to read into the buffer.
     size_t remaining_bytes =
-        event_data->read_buffer->size - event_data->total_bytes_read;
+        MAX_TEXT_REQUEST_SIZE - event_data->total_bytes_read;
     // Pointer to the start of the "empty" read buffer.
     void *remaining_buffer =
         event_data->read_buffer->data + event_data->total_bytes_read;
@@ -75,7 +75,9 @@ static int read_until_newline(struct WorkerArgs *args,
     // Find a newline in the bytes we just read.
     char *newline = memchr(remaining_buffer, '\n', nread);
     if (newline != NULL) {
-      *newline = '\0';
+      // Replace the character after the newline with a null char so that we can
+      // manipulate the string up until that point.
+      *(newline + 1) = '\0';
       return CLIENT_READ_SUCCESS;
     }
 
@@ -99,6 +101,19 @@ static void check_is_text_representable(struct EventData *event_data) {
     event_data->response_type = BT_EBINARY;
     event_data_clear_response_content(event_data);
   }
+}
+
+// If the given string contains a newline convert it to a null character and
+// return true. Otherwise return false. Since we'll be using this on a token
+// that was obtained through `strsep` on a well formed string, it should be
+// safe.
+static bool validate_and_parse_last_token(char *token) {
+  char *newline = strchr(token, '\n');
+  if (newline != NULL) {
+    *newline = '\0';
+    return true;
+  }
+  return false;
 }
 
 // Parses the well-formed text request from the client state and mutates the
@@ -284,6 +299,13 @@ void handle_text_client_request(struct WorkerArgs *args,
     event_data->total_bytes_read = 0;
     event_data->client_state = TEXT_READING_INPUT;
   }
+
+  // TODO: Change the behavior so that each request is exactly a command and the
+  // arguments separated by a single space character and terminated with a
+  // newline. That is, it's either:
+  // - "COMMAND\n"
+  // - "COMMAND ARG1\n"
+  // - "COMMAND ARG1 ARG2\n"
 
   // Read until a newline is found.
   int rv = read_until_newline(args, event);
