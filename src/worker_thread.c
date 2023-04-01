@@ -56,9 +56,10 @@ static void accept_connections(struct WorkerArgs *worker_args,
       return;
     }
 
-    printf("Accepted connection on descriptor %d "
-           "(host=%s, port=%s)\n",
-           event_data->fd, event_data->host, event_data->port);
+    worker_log(worker_args,
+               "Accepted connection on descriptor %d "
+               "(host=%s, port=%s)",
+               event_data->fd, event_data->host, event_data->port);
 
     // Make the socket non blocking so that we can use it with edge-triggered
     // epoll.
@@ -145,12 +146,6 @@ void *worker(void *_args) {
         // Keep processing fds...
         continue;
       }
-
-      printf("EPOLLERR? %d\n", events[i].events & EPOLLERR);
-      printf("EPOLLIN? %d\n", events[i].events & EPOLLIN);
-      printf("EPOLLOUT? %d\n", events[i].events & EPOLLOUT);
-      printf("EPOLLET? %d\n", events[i].events & EPOLLET);
-      printf("EPOLLONESHOT? %d\n", events[i].events & EPOLLONESHOT);
 
       if (event_data->fd == args->text_fd ||
           event_data->fd == args->binary_fd) {
