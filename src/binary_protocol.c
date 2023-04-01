@@ -20,26 +20,10 @@ void handle_binary_client_response(struct WorkerArgs *args,
     return;
   }
 
-  printf("We should return command <%s>\n",
-         binary_type_str(event_data->response_type));
-
-  if (event_data->response_content != NULL) {
-    struct BoundedData *safe_to_print_content =
-        bounded_data_create_from_buffer_duplicate(
-            event_data->response_content->data,
-            event_data->response_content->size + 1);
-    safe_to_print_content->data[safe_to_print_content->size - 1] = '\0';
-    printf("Also we should return content <%s>\n", safe_to_print_content->data);
-    bounded_data_destroy(safe_to_print_content);
-  }
-
-  printf("DEBUG 1\n");
-
   int rv;
   size_t total_bytes_written;
 
   if (event_data->client_state == BINARY_WRITING_COMMAND) {
-    printf("DEBUG 2\n");
     total_bytes_written = 0;
     int rv = write_buffer(event_data->fd, &(event_data->response_type), 1,
                           &total_bytes_written);
@@ -50,11 +34,9 @@ void handle_binary_client_response(struct WorkerArgs *args,
     if (event_data->response_content != NULL) {
       event_data->client_state = BINARY_WRITING_CONTENT_SIZE;
     }
-    printf("DEBUG 3\n");
   }
 
   if (event_data->client_state == BINARY_WRITING_CONTENT_SIZE) {
-    printf("DEBUG 4\n");
     uint32_t content_size = htonl(event_data->response_content->size);
     total_bytes_written = 0;
     rv = write_buffer(event_data->fd, (char *)&content_size,
@@ -64,11 +46,9 @@ void handle_binary_client_response(struct WorkerArgs *args,
       return;
     }
     event_data->client_state = BINARY_WRITING_CONTENT_DATA;
-    printf("DEBUG 5\n");
   }
 
   if (event_data->client_state == BINARY_WRITING_CONTENT_DATA) {
-    printf("DEBUG 6\n");
     total_bytes_written = 0;
     rv = write_buffer(event_data->fd, event_data->response_content->data,
                       event_data->response_content->size, &total_bytes_written);
@@ -76,11 +56,7 @@ void handle_binary_client_response(struct WorkerArgs *args,
       printf("Error writing content size\n");
       return;
     }
-
-    printf("Done, should clean up\n");
   }
-
-  printf("DEBUG 7\n");
 }
 
 // Handles an unsuccessful read from a binary client.
@@ -146,9 +122,12 @@ static int handle_binary_reading_command(struct EventData *event_data,
   return rv;
 }
 
-// Handles the BINARY_READING_ARG1_SIZE client state. Returns CLIENT_READ_ERROR,
-// CLIENT_READ_CLOSED, CLIENT_READ_SUCCESS or CLIENT_READ_INCOMPLETE.
-static int handle_binary_reading_arg1_size(struct EventData *event_data) {
+// Handles the BINARY_READING_ARG1_SIZE or BINARY_READING_ARG1_SIZE client
+// state. Returns CLIENT_READ_ERROR, CLIENT_READ_CLOSED, CLIENT_READ_SUCCESS or
+// CLIENT_READ_INCOMPLETE.
+static int handle_binary_reading_arg_size(struct EventData *event_data,
+                                          struct BoundedData **arg_buffer,
+                                          enum ClientState next_state) {
   int rv = read_buffer(event_data->fd, (char *)&(event_data->arg_size),
                        sizeof(event_data->arg_size),
                        &(event_data->total_bytes_read));
@@ -158,53 +137,12 @@ static int handle_binary_reading_arg1_size(struct EventData *event_data) {
 
   // Convert the read size from network byte order to host byte order.
   event_data->arg_size = ntohl(event_data->arg_size);
-  // Then allocate memory for reading the argument and transition accordingly,
-  // resetting the bytes read counter.
-  event_data->arg1 = bounded_data_create(event_data->arg_size);
+  // Then allocate memory forthe and transition accordingly, resetting the bytes
+  // read counter.
+  *arg_buffer = bounded_data_create(event_data->arg_size);
   event_data->arg_size = 0; // Clear it just in case.
-  event_data->client_state = BINARY_READING_ARG1_DATA;
+  event_data->client_state = next_state;
   event_data->total_bytes_read = 0;
-
-  return rv;
-}
-
-// Handles the BINARY_READING_ARG1_DATA client state. Returns CLIENT_READ_ERROR,
-// CLIENT_READ_CLOSED, CLIENT_READ_SUCCESS or CLIENT_READ_INCOMPLETE.
-static int handle_binary_reading_arg1_data(struct EventData *event_data,
-                                           struct HashTable *hashtable) {
-  int rv = read_buffer(event_data->fd, event_data->arg1->data,
-                       event_data->arg1->size, &(event_data->total_bytes_read));
-  if (rv != CLIENT_READ_SUCCESS) {
-    return rv;
-  }
-
-  // Decide where to transition next and reset the read bytes counter.
-  event_data->total_bytes_read = 0;
-  switch (event_data->command_type) {
-  case BT_DEL:
-    // We can handle the DEL command.
-    handle_del(event_data, hashtable, event_data->arg1);
-    event_data->client_state = BINARY_WRITING_COMMAND;
-    break;
-  case BT_GET:
-    // We can handle the GET command.
-    handle_get(event_data, hashtable, event_data->arg1);
-    event_data->client_state = BINARY_WRITING_COMMAND;
-    break;
-  case BT_TAKE:
-    // We can handle the TAKE command.
-    handle_take(event_data, hashtable, event_data->arg1);
-    event_data->client_state = BINARY_WRITING_COMMAND;
-    break;
-  case BT_PUT:
-    // We can't yet handle the PUT command because we need another argument.
-    event_data->client_state = BINARY_READING_ARG2_SIZE;
-    break;
-  default:
-    // The command we received is invalid, so we return an appropriate command.
-    event_data->response_type = BT_EINVAL;
-    event_data->client_state = BINARY_WRITING_COMMAND;
-  }
 
   return rv;
 }
@@ -228,6 +166,9 @@ void handle_binary_client_request(struct WorkerArgs *args,
     event_data_close_client(event_data);
   }
 
+  worker_log(args, "Entering handle_binary_client_request with state <%s>",
+             client_state_str(event_data->client_state));
+
   if (event_data->client_state == BINARY_READY) {
     handle_binary_ready(event_data);
   }
@@ -241,7 +182,8 @@ void handle_binary_client_request(struct WorkerArgs *args,
   }
 
   if (event_data->client_state == BINARY_READING_ARG1_SIZE) {
-    rv = handle_binary_reading_arg1_size(event_data);
+    rv = handle_binary_reading_arg_size(event_data, &(event_data->arg1),
+                                        BINARY_READING_ARG1_DATA);
     if (rv != CLIENT_READ_SUCCESS) {
       handle_unsuccessful_read(rv, args, event);
       return;
@@ -249,28 +191,86 @@ void handle_binary_client_request(struct WorkerArgs *args,
   }
 
   if (event_data->client_state == BINARY_READING_ARG1_DATA) {
-    rv = handle_binary_reading_arg1_data(event_data, args->hashtable);
+    printf("aaaa\n");
+    if (event_data->arg1)
+      rv = read_buffer(event_data->fd, event_data->arg1->data,
+                       event_data->arg1->size, &(event_data->total_bytes_read));
+    if (rv != CLIENT_READ_SUCCESS) {
+      handle_unsuccessful_read(rv, args, event);
+      return;
+    }
+
+    // Decide where to transition next and reset the read bytes counter.
+    event_data->total_bytes_read = 0;
+    switch (event_data->command_type) {
+    case BT_DEL:
+      // We can handle the DEL command.
+      handle_del(event_data, args->hashtable, event_data->arg1);
+      event_data->client_state = BINARY_WRITING_COMMAND;
+      break;
+    case BT_GET:
+      // We can handle the GET command.
+      handle_get(event_data, args->hashtable, event_data->arg1);
+      event_data->client_state = BINARY_WRITING_COMMAND;
+      break;
+    case BT_TAKE:
+      // We can handle the TAKE command.
+      handle_take(event_data, args->hashtable, event_data->arg1);
+      event_data->client_state = BINARY_WRITING_COMMAND;
+      break;
+    case BT_PUT:
+      // We can't yet handle the PUT command because we need another argument.
+      event_data->client_state = BINARY_READING_ARG2_SIZE;
+      break;
+    default:
+      // The command we received is invalid, so we return an appropriate
+      // command.
+      worker_log(args, "Processing invalid command in state %s.",
+                 client_state_str(event_data->client_state));
+      event_data->response_type = BT_EINVAL;
+      event_data->client_state = BINARY_WRITING_COMMAND;
+    }
+  }
+
+  if (event_data->client_state == BINARY_READING_ARG2_SIZE) {
+    rv = handle_binary_reading_arg_size(event_data, &(event_data->arg2),
+                                        BINARY_READING_ARG2_DATA);
     if (rv != CLIENT_READ_SUCCESS) {
       handle_unsuccessful_read(rv, args, event);
       return;
     }
   }
 
-  if (event_data->client_state == BINARY_READING_ARG2_SIZE) {
-    // TODO
-    printf("Implement reading ARG2 size\n");
-  }
-
   if (event_data->client_state == BINARY_READING_ARG2_DATA) {
-    // TODO
-    printf("Implement reading ARG2 data\n");
+    rv = read_buffer(event_data->fd, event_data->arg2->data,
+                     event_data->arg2->size, &(event_data->total_bytes_read));
+    if (rv != CLIENT_READ_SUCCESS) {
+      handle_unsuccessful_read(rv, args, event);
+      return;
+    }
+
+    if (event_data->command_type == BT_PUT) {
+      handle_put(event_data, args->hashtable, event_data->arg1,
+                 event_data->arg2);
+      event_data->arg1 = NULL; // The pointer is now owned by the hashtable.
+      event_data->arg2 = NULL; // The pointer is now owned by the hashtable.
+      event_data->client_state = BINARY_WRITING_COMMAND;
+    } else {
+      // The command we received is invalid, so we return an appropriate
+      // command.
+      worker_log(args, "Processing invalid command in state %s.",
+                 client_state_str(event_data->client_state));
+      event_data->response_type = BT_EINVAL;
+      event_data->client_state = BINARY_WRITING_COMMAND;
+    }
   }
 
   if (event_data->client_state == BINARY_WRITING_COMMAND) {
-    printf("A response is ready to be sent!\n");
     handle_binary_client_response(args, event);
     return;
   }
 
-  printf("WTFFFFFF\n");
+  worker_log(args, "Reached this place in state <%s> and command <%s>",
+             client_state_str(event_data->client_state),
+             binary_type_str(event_data->command_type));
 }
