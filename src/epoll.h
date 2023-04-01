@@ -69,4 +69,8 @@ char *client_state_str(enum ClientState client_state);
 // Resets the state of the client to handle a new request.
 void event_data_reset(struct EventData *event_data);
 
+// Frees and clears the pointer to the response content of the EventData
+// instance.
+void event_data_clear_response_content(struct EventData *event_data);
+
 #endif

@@ -7,6 +7,7 @@
 #include "epoll.h"
 #include "protocol.h"
 #include "text_protocol.h"
+#include "utils.h"
 #include "worker_state.h"
 
 #define COMMAND_BUFFER_SIZE 20
@@ -88,6 +89,18 @@ static int read_until_newline(struct WorkerArgs *args,
   return CLIENT_READ_ERROR;
 }
 
+// If it's a successful response with content that is not text representable
+// change the response type to EBINARY and clear the response content.
+static void check_is_text_representable(struct EventData *event_data) {
+  if (event_data->response_type == BT_OK &&
+      event_data->response_content != NULL &&
+      !is_text_representable(event_data->response_content->data,
+                             event_data->response_content->size)) {
+    event_data->response_type = BT_EBINARY;
+    event_data_clear_response_content(event_data);
+  }
+}
+
 // Parses the well-formed text request from the client state and mutates the
 // EventData struct inside the epoll event with the appropriate data for the
 // response.
@@ -132,6 +145,7 @@ static void parse_text_request(struct WorkerArgs *args,
     // original pointer will be cleared when the client state is reset.
     key->data = NULL;
     bounded_data_destroy(key);
+    check_is_text_representable(event_data);
     return;
   }
 
@@ -144,6 +158,7 @@ static void parse_text_request(struct WorkerArgs *args,
     // original pointer will be cleared when the client state is reset.
     key->data = NULL;
     bounded_data_destroy(key);
+    check_is_text_representable(event_data);
     return;
   }
 

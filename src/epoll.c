@@ -8,6 +8,15 @@
 #include "epoll.h"
 #include "sockets.h"
 
+// Frees and clears the pointer to the response content of the EventData
+// instance.
+void event_data_clear_response_content(struct EventData *event_data) {
+  if (event_data->response_content != NULL) {
+    bounded_data_destroy(event_data->response_content);
+    event_data->response_content = NULL;
+  }
+}
+
 // Resets the state of the client to handle a new request. This frees the read
 // and write buffers should the be different from NULL.
 void event_data_reset(struct EventData *event_data) {
@@ -24,10 +33,7 @@ void event_data_reset(struct EventData *event_data) {
   }
   event_data->total_bytes_read = 0;
   event_data->response_type = BT_EINVAL;
-  if (event_data->response_content != NULL) {
-    bounded_data_destroy(event_data->response_content);
-    event_data->response_content = NULL;
-  }
+  event_data_clear_response_content(event_data);
   event_data->total_bytes_written = 0;
 }
 
