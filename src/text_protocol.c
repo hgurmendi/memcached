@@ -44,20 +44,17 @@ static int epoll_mod_client(int epoll_fd, struct epoll_event *event,
 // CLIENT_READ_CLOSED is returned. If the client's read buffer has some space in
 // it and the client is not ready for reading then CLIENT_READ_INCOMPLETE is
 // returned. If an error happens then CLIENT_READ_ERROR is returned.
-static int read_until_newline(struct WorkerArgs *args,
-                              struct epoll_event *event) {
-  struct EventData *event_data = event->data.ptr;
+static int read_until_newline(int incoming_fd, char *buffer, size_t buffer_size,
+                              size_t *total_bytes_read, size_t read_limit) {
   ssize_t nread = 0;
 
-  while (event_data->total_bytes_read < MAX_TEXT_REQUEST_SIZE) {
+  while (*total_bytes_read < buffer_size) {
     // Remaining amount of bytes to read into the buffer.
-    size_t remaining_bytes =
-        MAX_TEXT_REQUEST_SIZE - event_data->total_bytes_read;
+    size_t remaining_bytes = buffer_size - *total_bytes_read;
     // Pointer to the start of the "empty" read buffer.
-    void *remaining_buffer =
-        event_data->read_buffer->data + event_data->total_bytes_read;
+    char *remaining_buffer = buffer + *total_bytes_read;
 
-    nread = read(event_data->fd, remaining_buffer, remaining_bytes);
+    nread = read(incoming_fd, remaining_buffer, remaining_bytes);
     if (nread == -1) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // The client is not ready to ready yet.
@@ -72,9 +69,10 @@ static int read_until_newline(struct WorkerArgs *args,
       return CLIENT_READ_CLOSED;
     }
 
-    // Find a newline in the bytes we just read.
+    // Try to find a newline in the bytes we just read and see if it's within
+    // the read limit.
     char *newline = memchr(remaining_buffer, '\n', nread);
-    if (newline != NULL) {
+    if (newline != NULL && (newline - buffer) < read_limit) {
       // Replace the character after the newline with a null char so that we can
       // manipulate the string up until that point.
       *(newline + 1) = '\0';
@@ -83,7 +81,7 @@ static int read_until_newline(struct WorkerArgs *args,
 
     // We didn't a newline in the bytes we just read, update the total bytes
     // read and keep reading if possible.
-    event_data->total_bytes_read += nread;
+    *total_bytes_read += nread;
   }
 
   // We read all the bytes we are allowed for the buffer and didn't find the
@@ -104,10 +102,9 @@ static void check_is_text_representable(struct EventData *event_data) {
 }
 
 // If the given string contains a newline convert it to a null character and
-// return true. Otherwise return false. Since we'll be using this on a token
-// that was obtained through `strsep` on a well formed string, it should be
-// safe.
-static bool validate_and_parse_last_token(char *token) {
+// return true. Otherwise return false. Make sure the given string is safe to
+// use strchr on.
+static bool remove_newline_if_found(char *token) {
   char *newline = strchr(token, '\n');
   if (newline != NULL) {
     *newline = '\0';
@@ -123,24 +120,32 @@ static void parse_text_request(struct WorkerArgs *args,
                                struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
   char *token = event_data->read_buffer->data;
+  int argument_count = 0;
 
-  char *command = strsep(&token, " "); // Should at least be an empty string.
+  char *command = strsep(&token, " ");
+  if (command != NULL && remove_newline_if_found(command)) {
+    argument_count = 0;
+  }
+  char *first_arg = strsep(&token, " ");
+  if (first_arg != NULL && remove_newline_if_found(first_arg)) {
+    argument_count = 1;
+  }
+  char *second_arg = strsep(&token, " ");
+  if (second_arg != NULL && remove_newline_if_found(second_arg)) {
+    argument_count = 2;
+  }
 
   // By the default the response is BT_EINVAL.
   event_data->response_type = BT_EINVAL;
 
-  if (!strcmp(command, binary_type_str(BT_STATS))) {
+  if (argument_count == 0 && !strcmp(command, binary_type_str(BT_STATS))) {
     handle_stats(event_data, args->hashtable);
     return;
   }
 
-  char *first_arg = strsep(&token, " ");
-  if (first_arg == NULL) {
-    return;
-  }
-
-  if (!strcmp(command, binary_type_str(BT_DEL))) {
-    struct BoundedData *key = bounded_data_create_from_string(first_arg);
+  if (argument_count == 1 && !strcmp(command, binary_type_str(BT_DEL))) {
+    struct BoundedData *key =
+        bounded_data_create_from_buffer(first_arg, strlen(first_arg));
     handle_del(event_data, args->hashtable, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
@@ -151,8 +156,9 @@ static void parse_text_request(struct WorkerArgs *args,
     return;
   }
 
-  if (!strcmp(command, binary_type_str(BT_GET))) {
-    struct BoundedData *key = bounded_data_create_from_string(first_arg);
+  if (argument_count == 1 && !strcmp(command, binary_type_str(BT_GET))) {
+    struct BoundedData *key =
+        bounded_data_create_from_buffer(first_arg, strlen(first_arg));
     handle_get(event_data, args->hashtable, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
@@ -164,8 +170,9 @@ static void parse_text_request(struct WorkerArgs *args,
     return;
   }
 
-  if (!strcmp(command, binary_type_str(BT_TAKE))) {
-    struct BoundedData *key = bounded_data_create_from_string(first_arg);
+  if (argument_count == 1 && !strcmp(command, binary_type_str(BT_TAKE))) {
+    struct BoundedData *key =
+        bounded_data_create_from_buffer(first_arg, strlen(first_arg));
     handle_take(event_data, args->hashtable, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
@@ -177,17 +184,18 @@ static void parse_text_request(struct WorkerArgs *args,
     return;
   }
 
-  char *second_arg = strsep(&token, " ");
-  if (second_arg == NULL) {
-    return;
-  }
-
-  if (!strcmp(command, binary_type_str(BT_PUT))) {
+  if (argument_count == 2 && !strcmp(command, binary_type_str(BT_PUT))) {
+    size_t key_len = strlen(first_arg);
+    size_t value_len = strlen(second_arg);
+    if (key_len <= 0 || value_len <= 0) {
+      // Invalid insert.
+      return;
+    }
     // The BoundedData instances below will be "owned" by the hash table.
     struct BoundedData *key =
-        bounded_data_create_from_string_duplicate(first_arg);
+        bounded_data_create_from_buffer_duplicate(first_arg, key_len);
     struct BoundedData *value =
-        bounded_data_create_from_string_duplicate(second_arg);
+        bounded_data_create_from_buffer_duplicate(second_arg, value_len);
     handle_put(event_data, args->hashtable, key, value);
     return;
   }
@@ -300,15 +308,12 @@ void handle_text_client_request(struct WorkerArgs *args,
     event_data->client_state = TEXT_READING_INPUT;
   }
 
-  // TODO: Change the behavior so that each request is exactly a command and the
-  // arguments separated by a single space character and terminated with a
-  // newline. That is, it's either:
-  // - "COMMAND\n"
-  // - "COMMAND ARG1\n"
-  // - "COMMAND ARG1 ARG2\n"
-
-  // Read until a newline is found.
-  int rv = read_until_newline(args, event);
+  // Read until a newline is found within the request size limit and leave it in
+  // the buffer with a null character next to it. Otherwise, return an error.
+  int rv = read_until_newline(event_data->fd, event_data->read_buffer->data,
+                              event_data->read_buffer->size,
+                              &(event_data->total_bytes_read),
+                              MAX_TEXT_REQUEST_SIZE);
   switch (rv) {
   case CLIENT_READ_SUCCESS:
     break;
@@ -324,7 +329,8 @@ void handle_text_client_request(struct WorkerArgs *args,
     return;
   }
 
-  // Parse the text request.
+  // Parse the text request. In there we make sure the text protcol format is
+  // enforced.
   parse_text_request(args, event);
 
   // Transition to writing the command.
