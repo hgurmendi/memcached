@@ -9,6 +9,8 @@
 #include "text_protocol.h"
 #include "worker_state.h"
 
+#define COMMAND_BUFFER_SIZE 20
+
 // Maximum request size for the text protocol.
 #define MAX_TEXT_REQUEST_SIZE 2048
 
@@ -161,63 +163,87 @@ static void parse_text_request(struct WorkerArgs *args,
   }
 }
 
-static int handle_text_client_response(struct WorkerArgs *args,
-                                       struct epoll_event *event) {
-  struct EventData *event_data = event->data.ptr;
-
-  char response_prefix[20];
-  char *maybe_content_separator = event_data->write_buffer != NULL ? " " : "";
-  int rv = snprintf(response_prefix, sizeof(response_prefix), "%s%s",
+// Writes or resumes the writing of a command of a text response. Returns
+// CLIENT_WRITE_ERROR, CLIENT_WRITE_SUCCESS or CLIENT_WRITE_INCOMPLETE.
+static int write_command(struct EventData *event_data) {
+  char command_buf[COMMAND_BUFFER_SIZE];
+  char *maybe_content_separator =
+      event_data->response_content != NULL ? " " : "";
+  int rv = snprintf(command_buf, COMMAND_BUFFER_SIZE, "%s%s",
                     binary_type_str(event_data->response_type),
                     maybe_content_separator);
   if (rv < 0) {
-    perror("handle_text_client_response snprintf");
+    perror("write_command snprintf");
     return CLIENT_WRITE_ERROR;
   }
-  size_t response_prefix_size =
-      strnlen(response_prefix, sizeof(response_prefix) - 1);
 
-  size_t total_bytes_written = 0;
-  rv = write_buffer(event_data->fd, response_prefix, response_prefix_size,
-                    &total_bytes_written);
-  if (rv != CLIENT_WRITE_SUCCESS) {
-    // Return if write wasn't successful.
-    return rv;
-  }
+  // Make sure we don't write the trailing '\0', hence the strnlen.
+  size_t command_len = strnlen(command_buf, COMMAND_BUFFER_SIZE);
+  return write_buffer(event_data->fd, command_buf, command_len,
+                      &(event_data->total_bytes_written));
+}
 
-  //////////////
-  // Should update the state to know that the prefix was sent.
-  //////////////
+// Writes or resumes the writing of a response's content. Returns
+// CLIENT_WRITE_ERROR, CLIENT_WRITE_SUCCESS or CLIENT_WRITE_INCOMPLETE.
+static int write_content(struct EventData *event_data) {
+  char *write_buf = event_data->response_content->data;
+  // Make sure we don't write the trailing '\0', hence the strnlen.
+  size_t write_len = strnlen(write_buf, event_data->response_content->size);
+  return write_buffer(event_data->fd, write_buf, write_len,
+                      &(event_data->total_bytes_written));
+}
 
-  // Only write the content if there is something to write.
-  if (event_data->write_buffer != NULL) {
-    total_bytes_written = 0;
-    // TODO: Should remove the trailing '\0' from the write buffer, if present?
-    rv = write_buffer(event_data->fd, event_data->write_buffer->data,
-                      event_data->write_buffer->size, &total_bytes_written);
+// Writes or resumes the writing of the ending newline character of a response.
+// Returns CLIENT_WRITE_ERROR, CLIENT_WRITE_SUCCESS or CLIENT_WRITE_INCOMPLETE.
+static int write_newline(struct EventData *event_data) {
+  return write_buffer(event_data->fd, "\n", 1,
+                      &(event_data->total_bytes_written));
+}
+
+static int handle_text_client_response(struct WorkerArgs *args,
+                                       struct epoll_event *event) {
+  struct EventData *event_data = event->data.ptr;
+  int rv;
+
+  if (event_data->client_state == TEXT_WRITING_COMMAND) {
+    rv = write_command(event_data);
     if (rv != CLIENT_WRITE_SUCCESS) {
-      // Return if write wasn't successful.
+      // Return error code if write wasn't successful.
       return rv;
+    }
+    event_data->total_bytes_written = 0;
+    if (event_data->response_content != NULL) {
+      // Transition to writing the content if there is something.
+      event_data->client_state = TEXT_WRITING_CONTENT;
+    } else {
+      // Otherwise transition to writing the trailing newline.
+      event_data->client_state = TEXT_WRITING_NEWLINE;
     }
   }
 
-  //////////////
-  // Should update the state to know that the prefix was sent.
-  //////////////
-
-  total_bytes_written = 0;
-  // Always write the trailing \n.
-  rv = write_buffer(event_data->fd, "\n", 1, &total_bytes_written);
-  if (rv != CLIENT_WRITE_SUCCESS) {
-    // Return if write wasn't successful.
-    return rv;
+  if (event_data->client_state == TEXT_WRITING_CONTENT) {
+    rv = write_content(event_data);
+    if (rv != CLIENT_WRITE_SUCCESS) {
+      // Return error code if write wasn't successful.
+      return rv;
+    }
+    event_data->total_bytes_written = 0;
+    // Transition to writing the trailing newline.
+    event_data->client_state = TEXT_WRITING_NEWLINE;
   }
 
-  //////////////
-  // Should update the state to know that the prefix was sent.
-  //////////////
+  if (event_data->client_state == TEXT_WRITING_NEWLINE) {
+    rv = write_newline(event_data);
+    if (rv != CLIENT_WRITE_SUCCESS) {
+      // Return error code if write wasn't successful.
+      return rv;
+    }
+    // Return a successful write!
+    return CLIENT_WRITE_SUCCESS;
+  }
 
-  return CLIENT_WRITE_SUCCESS;
+  worker_log(args, "Invalid state reached in handle_text_client_response");
+  return CLIENT_WRITE_ERROR;
 }
 
 void handle_text_client_request(struct WorkerArgs *args,
@@ -264,18 +290,22 @@ void handle_text_client_request(struct WorkerArgs *args,
   // Parse the text request.
   parse_text_request(args, event);
 
+  // Transition to writing the command.
+  event_data->client_state = TEXT_WRITING_COMMAND;
+
   rv = handle_text_client_response(args, event);
   if (rv == CLIENT_WRITE_INCOMPLETE) {
     // Re-register the client in epoll so we can continue writing later.
     worker_log(args, "FOUND A CLIENT WHOSE WRITE IS INCOMPLETE");
     epoll_mod_client(args->epoll_fd, event, EPOLLOUT);
+    return;
   } else if (rv == CLIENT_WRITE_ERROR) {
     event_data_close_client(event_data);
     return;
   }
 
   // reset the client state so we can read again.
-  event_data_reset_client(event_data);
+  event_data_reset(event_data);
   // re-register him to read again on next stimulus.
   epoll_mod_client(args->epoll_fd, event, EPOLLIN);
 }

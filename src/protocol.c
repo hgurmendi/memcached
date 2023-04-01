@@ -61,7 +61,7 @@ void handle_stats(struct EventData *event_data, struct HashTable *hashtable) {
            69UL, 42069UL, num_keys);
 
   event_data->response_type = BT_OK;
-  event_data->write_buffer =
+  event_data->response_content =
       bounded_data_create_from_buffer(buffer, buffer_size);
 }
 
@@ -85,7 +85,7 @@ void handle_get(struct EventData *event_data, struct HashTable *hashtable,
   int rv = bd_hashtable_get(hashtable, key, &value);
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
-    event_data->write_buffer = value;
+    event_data->response_content = value;
   } else {
     event_data->response_type = BT_ENOTFOUND;
   }
@@ -99,7 +99,7 @@ void handle_take(struct EventData *event_data, struct HashTable *hashtable,
   int rv = bd_hashtable_take(hashtable, key, &value);
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
-    event_data->write_buffer = value;
+    event_data->response_content = value;
   } else {
     event_data->response_type = BT_ENOTFOUND;
   }

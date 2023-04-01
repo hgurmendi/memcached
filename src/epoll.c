@@ -8,8 +8,9 @@
 #include "epoll.h"
 #include "sockets.h"
 
-// Resets the client state for the given EventData instance.
-static void event_data_reset_client_state(struct EventData *event_data) {
+// Resets the state of the client to handle a new request. This frees the read
+// and write buffers should the be different from NULL.
+void event_data_reset(struct EventData *event_data) {
   if (event_data->connection_type == TEXT) {
     // Initial state for a text client.
     event_data->client_state = TEXT_READY;
@@ -17,6 +18,17 @@ static void event_data_reset_client_state(struct EventData *event_data) {
     // Initial state for a binary client.
     event_data->client_state = BINARY_READY;
   }
+  if (event_data->read_buffer != NULL) {
+    bounded_data_destroy(event_data->read_buffer);
+    event_data->read_buffer = NULL;
+  }
+  event_data->total_bytes_read = 0;
+  event_data->response_type = BT_EINVAL;
+  if (event_data->response_content != NULL) {
+    bounded_data_destroy(event_data->response_content);
+    event_data->response_content = NULL;
+  }
+  event_data->total_bytes_written = 0;
 }
 
 // Allocates memory for an EventData struct with some initial data.
@@ -30,13 +42,11 @@ struct EventData *event_data_create(int fd,
 
   event_data->fd = fd;
   event_data->connection_type = connection_type;
-  event_data_reset_client_state(event_data);
-  event_data->read_buffer = NULL;
-  event_data->total_bytes_read = 0;
-  event_data->response_type = BT_EINVAL;
-  event_data->write_buffer = NULL;
   strncpy(event_data->host, "UNINITIALIZED", NI_MAXHOST);
   strncpy(event_data->port, "UNINITIALIZED", NI_MAXSERV);
+  event_data->read_buffer = NULL;
+  event_data->response_content = NULL;
+  event_data_reset(event_data);
 
   return event_data;
 }
@@ -51,7 +61,7 @@ static void event_data_destroy(struct EventData *event_data) {
 // resources of the struct.
 void event_data_close_client(struct EventData *event_data) {
   close(event_data->fd);
-  event_data_reset_client(event_data);
+  event_data_reset(event_data);
   event_data_destroy(event_data);
 }
 
@@ -119,6 +129,8 @@ char *client_state_str(enum ClientState client_state) {
     return "TEXT_WRITING_COMMAND";
   case TEXT_WRITING_CONTENT:
     return "TEXT_WRITING_CONTENT";
+  case TEXT_WRITING_NEWLINE:
+    return "TEXT_WRITING_NEWLINE";
   case BINARY_READY:
     return "BINARY_READY";
   case BINARY_READING_COMMAND:
@@ -139,20 +151,5 @@ char *client_state_str(enum ClientState client_state) {
     return "BINARY_WRITING_CONTENT_DATA";
   default:
     return "UNKNOWN_CLIENT_STATE";
-  }
-}
-
-// Resets the state of the client to handle a new request.
-void event_data_reset_client(struct EventData *event_data) {
-  event_data_reset_client_state(event_data);
-  if (event_data->read_buffer != NULL) {
-    bounded_data_destroy(event_data->read_buffer);
-    event_data->read_buffer = NULL;
-  }
-  event_data->total_bytes_read = 0;
-  event_data->response_type = BT_EINVAL;
-  if (event_data->write_buffer != NULL) {
-    bounded_data_destroy(event_data->write_buffer);
-    event_data->write_buffer = NULL;
   }
 }
