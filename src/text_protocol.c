@@ -18,11 +18,6 @@
 // Buffer size for the text protocol.
 #define TEXT_REQUEST_BUFFER_SIZE (MAX_TEXT_REQUEST_SIZE + 5)
 
-#define CLIENT_READ_ERROR -1
-#define CLIENT_READ_CLOSED 0
-#define CLIENT_READ_SUCCESS 1
-#define CLIENT_READ_INCOMPLETE 2
-
 // Adds the given client event back to the epoll interest list. Returns 0 if
 // successful, -1 otherwise.
 static int epoll_mod_client(int epoll_fd, struct epoll_event *event,

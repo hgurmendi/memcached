@@ -14,11 +14,11 @@
 // write the whole buffer, the value pointed at by `total_bytes_written` is
 // updated to the new amount written and CLIENT_WRITE_INCOMPLETE is returned. If
 // an error happens then CLIENT_WRITE_ERROR is returned.
-int write_buffer(int fd, char *buffer, size_t buffer_length,
+int write_buffer(int fd, char *buffer, size_t buffer_size,
                  size_t *total_bytes_written) {
-  while (*total_bytes_written < buffer_length) {
+  while (*total_bytes_written < buffer_size) {
     char *remaining_buffer = buffer + *total_bytes_written;
-    size_t remaining_bytes = buffer_length - *total_bytes_written;
+    size_t remaining_bytes = buffer_size - *total_bytes_written;
     ssize_t nwritten = write(fd, remaining_buffer, remaining_bytes);
     if (nwritten == -1) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -41,6 +41,48 @@ int write_buffer(int fd, char *buffer, size_t buffer_length,
   }
 
   return CLIENT_WRITE_SUCCESS;
+}
+
+// reads from the given file descriptor into the given buffer up to the given
+// size, keeping track of the total bytes read in total_bytes_read. returns
+// CLIENT_READ_ERROR if an error happens, CLIENT_READ_CLOSED if the client
+// closes the connection, CLIENT_READ_INCOMPLETE if the file descriptor is not
+// yet ready to finish reading, or CLIENT_READ_SUCCESS if the read was
+// successfully finished.
+int read_buffer(int fd, char *buffer, size_t buffer_size,
+                size_t *total_bytes_read) {
+  while (*total_bytes_read < buffer_size) {
+    // Remaining amount of bytes to read into the buffer.
+    size_t remaining_bytes = buffer_size - *total_bytes_read;
+    // Pointer to the start of the "empty" read buffer.
+    char *remaining_buffer = buffer + *total_bytes_read;
+
+    ssize_t nread = read(fd, remaining_buffer, remaining_bytes);
+    if (nread == -1) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // The client is not ready to ready yet.
+        return CLIENT_READ_INCOMPLETE;
+      }
+
+      // Some other error happened.
+      perror("read_buffer read");
+      return CLIENT_READ_ERROR;
+    } else if (nread == 0) {
+      // Client disconnected gracefully.
+      return CLIENT_READ_CLOSED;
+    }
+
+    // TODO: remove this log after we test the resume behavior.
+    if (nread != remaining_bytes) {
+      printf("UNABLE TO READ ALL THE CONTENT, WE HAVE TO CONTINUE TRYING\n");
+    }
+
+    // Update the counter.
+    *total_bytes_read += nread;
+  }
+
+  // We should've finished reading successfully!
+  return CLIENT_READ_SUCCESS;
 }
 
 // Handles the STATS command and mutates the EventData instance accordingly.
