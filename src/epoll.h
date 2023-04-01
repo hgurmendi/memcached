@@ -43,6 +43,12 @@ struct EventData {
   enum BinaryType response_type;        // Response command.
   struct BoundedData *response_content; // Current write buffer of the client.
   size_t total_bytes_written; // Total bytes written for the current state.
+
+  // TODO: Figure out later how to organize this:
+  char command_type;
+  uint32_t arg_size;
+  struct BoundedData *arg1;
+  struct BoundedData *arg2;
 };
 
 #define MAX_EPOLL_EVENTS 128

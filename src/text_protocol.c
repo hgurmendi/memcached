@@ -18,20 +18,6 @@
 // Buffer size for the text protocol.
 #define TEXT_REQUEST_BUFFER_SIZE (MAX_TEXT_REQUEST_SIZE + 5)
 
-// Adds the given client event back to the epoll interest list. Returns 0 if
-// successful, -1 otherwise.
-static int epoll_mod_client(int epoll_fd, struct epoll_event *event,
-                            uint32_t event_flag) {
-  struct EventData *event_data = event->data.ptr;
-  event->events = event_flag | EPOLLET | EPOLLONESHOT;
-  int rv = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, event_data->fd, event);
-  if (rv == -1) {
-    perror("epoll_mod_client epoll_ctl");
-    return -1;
-  }
-  return 0;
-}
-
 // Reads from the current client until a newline is found or until the maximum
 // request size (which should be smaller than the size of the given buffer). If
 // a newline character is found then it's replaced by a null character and
@@ -299,7 +285,7 @@ void handle_text_client_request(struct WorkerArgs *args,
     struct BoundedData *read_buffer =
         bounded_data_create(TEXT_REQUEST_BUFFER_SIZE);
     event_data->read_buffer = read_buffer;
-    event_data->total_bytes_read = 0;
+    event_data->total_bytes_read = 0; // Just in case, shouldn't be needed.
     event_data->client_state = TEXT_READING_INPUT;
   }
 

@@ -1,7 +1,8 @@
 #ifndef __PROTOCOL_H__
 #define __PROTOCOL_H__
 
-#include <stddef.h> // for size_t
+#include <stddef.h>    // for size_t
+#include <sys/epoll.h> // for struct epoll_event
 
 #include "bounded_data_hashtable.h" // for struct HashTable
 #include "epoll.h"                  // for struct EventData
@@ -15,14 +16,19 @@
 #define CLIENT_READ_SUCCESS 1
 #define CLIENT_READ_INCOMPLETE 2
 
+// Adds the given client event back to the epoll interest list. Returns 0 if
+// successful, -1 otherwise.
+int epoll_mod_client(int epoll_fd, struct epoll_event *event,
+                     uint32_t event_flag);
+
 // Writes the given buffer with the given size into the client socket's file
 // descriptor, assuming that the amount of bytes in the value pointed at by
 // `total_bytes_written` were already sent. If the whole buffer is correctly
 // sent then CLIENT_WRITE_SUCCESS is returned and the value pointed at by
 // `total_bytes_written` is updated to reflect this. If it's not possible to
 // write the whole buffer, the value pointed at by `total_bytes_written` is
-// updated to the new amount written and CLIENT_WRITE_INCOMPLETE is returned. If
-// an error happens then CLIENT_WRITE_ERROR is returned.
+// updated to the new amount written and CLIENT_WRITE_INCOMPLETE is
+// returned. If an error happens then CLIENT_WRITE_ERROR is returned.
 int write_buffer(int fd, char *buffer, size_t buffer_length,
                  size_t *total_bytes_written);
 

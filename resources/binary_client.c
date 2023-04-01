@@ -11,6 +11,9 @@
 #include <netdb.h>
 #include <netinet/ip.h>
 
+#define HOST "localhost"
+#define PORT "7667"
+
 /*
  * Prender este flag para que el envío de datos sobre el socket sea
  * más al azar. Si tenemos que mandar 100 bytes, con este flag se van a
@@ -101,7 +104,7 @@ int create_sock(char *host, char *port)
 
 int conn()
 {
-	return create_sock("localhost", "8889");
+	return create_sock(HOST, PORT);
 }
 
 void writen(int fd, const void *buf, int len)

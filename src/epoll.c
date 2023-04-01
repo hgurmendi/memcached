@@ -35,6 +35,18 @@ void event_data_reset(struct EventData *event_data) {
   event_data->response_type = BT_EINVAL;
   event_data_clear_response_content(event_data);
   event_data->total_bytes_written = 0;
+
+  // TODO: figure out later how to organize this.
+  event_data->command_type = BT_EINVAL;
+  event_data->arg_size = 0;
+  if (event_data->arg1 != NULL) {
+    bounded_data_destroy(event_data->arg1);
+    event_data->arg1 = NULL;
+  }
+  if (event_data->arg2 != NULL) {
+    bounded_data_destroy(event_data->arg2);
+    event_data->arg2 = NULL;
+  }
 }
 
 // Allocates memory for an EventData struct with some initial data.
@@ -52,6 +64,10 @@ struct EventData *event_data_create(int fd,
   strncpy(event_data->port, "UNINITIALIZED", NI_MAXSERV);
   event_data->read_buffer = NULL;
   event_data->response_content = NULL;
+  // TODO: figure out later how to organize this.
+  event_data->command_type = BT_EINVAL;
+  event_data->arg1 = NULL;
+  event_data->arg2 = NULL;
   event_data_reset(event_data);
 
   return event_data;

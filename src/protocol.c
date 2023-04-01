@@ -6,6 +6,20 @@
 
 #include "protocol.h"
 
+// Adds the given client event back to the epoll interest list. Returns 0 if
+// successful, -1 otherwise.
+int epoll_mod_client(int epoll_fd, struct epoll_event *event,
+                     uint32_t event_flag) {
+  struct EventData *event_data = event->data.ptr;
+  event->events = event_flag | EPOLLET | EPOLLONESHOT;
+  int rv = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, event_data->fd, event);
+  if (rv == -1) {
+    perror("epoll_mod_client epoll_ctl");
+    return -1;
+  }
+  return 0;
+}
+
 // Writes the given buffer with the given size into the client socket's file
 // descriptor, assuming that the amount of bytes in the value pointed at by
 // `total_bytes_written` were already sent. If the whole buffer is correctly
@@ -103,6 +117,7 @@ void handle_stats(struct EventData *event_data, struct HashTable *hashtable) {
            69UL, 42069UL, num_keys);
 
   event_data->response_type = BT_OK;
+  // TODO: should exclude the trailing '\0'?
   event_data->response_content =
       bounded_data_create_from_buffer(buffer, buffer_size);
 }
