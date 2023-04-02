@@ -65,9 +65,9 @@ static int read_until_newline(int incoming_fd, char *buffer, size_t buffer_size,
     *total_bytes_read += nread;
   }
 
-  // We read all the bytes we are allowed for the buffer and didn't find the
-  // newline, just return an error.
-  return CLIENT_READ_ERROR;
+  // We read all the bytes we are allowed for the buffer but we didn't find a
+  // newline. We still return success because no error was found.
+  return CLIENT_READ_SUCCESS;
 }
 
 // If it's a successful response with content that is not text representable
@@ -273,10 +273,8 @@ int handle_text_client_request(struct WorkerArgs *args,
   // If we didn't start reading from the client yet, prepare everything and
   // begin.
   if (event_data->client_state == TEXT_READY) {
-    struct BoundedData *read_buffer =
-        bounded_data_create(TEXT_REQUEST_BUFFER_SIZE);
-    event_data->read_buffer = read_buffer;
-    event_data->total_bytes_read = 0; // Just in case, shouldn't be needed.
+    event_data->read_buffer = bounded_data_create(TEXT_REQUEST_BUFFER_SIZE);
+    event_data->total_bytes_read = 0;
     event_data->client_state = TEXT_READING_INPUT;
   }
 
@@ -284,22 +282,28 @@ int handle_text_client_request(struct WorkerArgs *args,
   // and in that case runs read_until_newline. We also should respond EINVAL
   // when the request is too long
 
-  // Read until a newline is found within the request size limit and leave it in
-  // the buffer with a null character next to it. Otherwise, return an error.
-  int rv = read_until_newline(event_data->fd, event_data->read_buffer->data,
-                              event_data->read_buffer->size,
-                              &(event_data->total_bytes_read),
-                              MAX_TEXT_REQUEST_SIZE);
-  if (rv != CLIENT_READ_SUCCESS) {
-    return rv;
+  if (event_data->client_state == TEXT_READING_INPUT) {
+    // Read from the client until a newline is found within the request size
+    // limit and place a null character after it, or read until the buffer is
+    // full but without a newline. Otherwise, return an error.
+    int rv = read_until_newline(event_data->fd, event_data->read_buffer->data,
+                                event_data->read_buffer->size,
+                                &(event_data->total_bytes_read),
+                                MAX_TEXT_REQUEST_SIZE);
+    if (rv != CLIENT_READ_SUCCESS) {
+      return rv;
+    }
+
+    // Parse the text request and mutate the struct EventData according to the
+    // contents and whether it adheres to the protocol or not.
+    parse_text_request(args, event);
+
+    // Transition to writing the command.
+    event_data->total_bytes_written = 0;
+    event_data->client_state = TEXT_WRITING_COMMAND;
+    return handle_text_client_response(args, event);
   }
 
-  // Parse the text request. In there we make sure the text protcol format is
-  // enforced.
-  parse_text_request(args, event);
-
-  // Transition to writing the command.
-  event_data->client_state = TEXT_WRITING_COMMAND;
-  event_data->total_bytes_written = 0;
-  return handle_text_client_response(args, event);
+  worker_log(args, "Invalid state reached in handle_text_client_request");
+  return CLIENT_READ_ERROR;
 }

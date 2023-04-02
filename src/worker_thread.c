@@ -17,8 +17,7 @@
 #include "worker_thread.h"
 
 // Accepts incoming connections
-static void accept_connections(struct WorkerArgs *worker_args,
-                               int incoming_fd) {
+static void accept_connections(struct WorkerArgs *args, int incoming_fd) {
   struct sockaddr incoming_addr;
   socklen_t incoming_addr_len = sizeof(incoming_addr);
   int client_fd;
@@ -45,7 +44,7 @@ static void accept_connections(struct WorkerArgs *worker_args,
     // Allocate memory for the event data that we'll store in the epoll
     // instance.
     struct EventData *event_data = event_data_create(
-        client_fd, incoming_fd == worker_args->binary_fd ? BINARY : TEXT);
+        client_fd, incoming_fd == args->binary_fd ? BINARY : TEXT);
 
     // Get the IP address and port of the client and store it in the struct.
     status = getnameinfo(&incoming_addr, incoming_addr_len, event_data->host,
@@ -57,7 +56,7 @@ static void accept_connections(struct WorkerArgs *worker_args,
       return;
     }
 
-    worker_log(worker_args,
+    worker_log(args,
                "Accepted connection on descriptor %d "
                "(host=%s, port=%s)",
                event_data->fd, event_data->host, event_data->port);
@@ -85,8 +84,7 @@ static void accept_connections(struct WorkerArgs *worker_args,
     event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
 
     // Finally, add the client file descriptor to the epoll instance.
-    status =
-        epoll_ctl(worker_args->epoll_fd, EPOLL_CTL_ADD, event_data->fd, &event);
+    status = epoll_ctl(args->epoll_fd, EPOLL_CTL_ADD, event_data->fd, &event);
     if (status == -1) {
       perror("accept_connections epoll_ctl");
       abort();

@@ -32,8 +32,8 @@ int epoll_mod_client(int epoll_fd, struct epoll_event *event,
 int write_buffer(int fd, char *buffer, size_t buffer_length,
                  size_t *total_bytes_written);
 
-// reads from the given file descriptor into the given buffer up to the given
-// size, keeping track of the total bytes read in total_bytes_read. returns
+// Reads from the given file descriptor into the given buffer up to the given
+// size, keeping track of the total bytes read in total_bytes_read. Returns
 // CLIENT_READ_ERROR if an error happens, CLIENT_READ_CLOSED if the client
 // closes the connection, CLIENT_READ_INCOMPLETE if the file descriptor is not
 // yet ready to finish reading, or CLIENT_READ_SUCCESS if the read was
