@@ -91,8 +91,9 @@ void hashtable_destroy(struct HashTable *hashtable);
 // Returns the number of keys stored in the hash table.
 uint64_t hashtable_key_count(struct HashTable *hashtable);
 
-// devuelve HT_NOTFOUND si no puede encontrar un miembro para borrar. devuelve
-// HT_NOTFOUND si pudimos expulsar un par clave valor de la tabla.
+// Evicts the least recently used entry from the hashtable. If there are no
+// entries in the cache then we return HT_NOTFOUND. Otherwise, we evict the
+// least recently used one and return HT_FOUND.
 int hashtable_evict_lru(struct HashTable *hashtable);
 
 #endif

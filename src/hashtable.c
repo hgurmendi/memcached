@@ -390,6 +390,7 @@ static void hashtable_destroy_bucket(struct HashTable *hashtable,
 // De-allocates memory for the hash table and all its keys and values.
 void hashtable_destroy(struct HashTable *hashtable) {
   for (int i = 0; i < hashtable->num_buckets; i++) {
+    // The usage nodes are destroyed when destroying the bucket.
     hashtable_destroy_bucket(hashtable, i);
   }
   free(hashtable->buckets);
