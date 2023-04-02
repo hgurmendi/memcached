@@ -144,9 +144,19 @@ static void parse_text_request(struct WorkerArgs *args,
       // Invalid DEL.
       return;
     }
-    // TODOMEM
+    // Create an uninitialized BoundedData struct and wrap it around the
+    // `first_arg` buffer.
     struct BoundedData *key =
-        bounded_data_create_from_buffer(first_arg, key_len);
+        hashtable_malloc_evict_bounded_data(args->hashtable, 0);
+    if (key == NULL) {
+      // Respond with BT_EUNK if the request can't be properly fulfilled due to
+      // lack of memory.
+      event_data->response_type = BT_EUNK;
+      return;
+    }
+    key->size = key_len;
+    key->data = first_arg;
+
     handle_del(event_data, args, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
@@ -163,9 +173,19 @@ static void parse_text_request(struct WorkerArgs *args,
       // Invalid GET.
       return;
     }
-    // TODOMEM
+    // Create an uninitialized BoundedData struct and wrap it around the
+    // `first_arg` buffer.
     struct BoundedData *key =
-        bounded_data_create_from_buffer(first_arg, key_len);
+        hashtable_malloc_evict_bounded_data(args->hashtable, 0);
+    if (key == NULL) {
+      // Respond with BT_EUNK if the request can't be properly fulfilled due to
+      // lack of memory.
+      event_data->response_type = BT_EUNK;
+      return;
+    }
+    key->size = key_len;
+    key->data = first_arg;
+
     handle_get(event_data, args, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
@@ -183,9 +203,19 @@ static void parse_text_request(struct WorkerArgs *args,
       // Invalid TAKE.
       return;
     }
-    // TODOMEM
+    // Create an uninitialized BoundedData struct and wrap it around the
+    // `first_arg` buffer.
     struct BoundedData *key =
-        bounded_data_create_from_buffer(first_arg, key_len);
+        hashtable_malloc_evict_bounded_data(args->hashtable, 0);
+    if (key == NULL) {
+      // Respond with BT_EUNK if the request can't be properly fulfilled due to
+      // lack of memory.
+      event_data->response_type = BT_EUNK;
+      return;
+    }
+    key->size = key_len;
+    key->data = first_arg;
+
     handle_take(event_data, args, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
@@ -205,12 +235,26 @@ static void parse_text_request(struct WorkerArgs *args,
       return;
     }
     // The BoundedData instances below will be "owned" by the hash table.
-    // TODOMEM
     struct BoundedData *key =
-        bounded_data_create_from_buffer_duplicate(first_arg, key_len);
-    // TODOMEM
+        hashtable_malloc_evict_bounded_data(args->hashtable, key_len);
+    if (key == NULL) {
+      // Respond with BT_EUNK if the request can't be properly fulfilled due to
+      // lack of memory.
+      event_data->response_type = BT_EUNK;
+      return;
+    }
     struct BoundedData *value =
-        bounded_data_create_from_buffer_duplicate(second_arg, value_len);
+        hashtable_malloc_evict_bounded_data(args->hashtable, value_len);
+    if (value == NULL) {
+      // Respond with BT_EUNK if the request can't be properly fulfilled due to
+      // lack of memory.
+      bounded_data_destroy(key);
+      event_data->response_type = BT_EUNK;
+      return;
+    }
+    memcpy(key->data, first_arg, key_len);
+    memcpy(value->data, second_arg, value_len);
+
     handle_put(event_data, args, key, value);
     return;
   }
@@ -307,10 +351,17 @@ int handle_text_client_request(struct WorkerArgs *args,
   // If we didn't start reading from the client yet, prepare everything and
   // begin.
   if (event_data->client_state == TEXT_READY) {
-    // TODOMEM
-    event_data->read_buffer = bounded_data_create(TEXT_REQUEST_BUFFER_SIZE);
-    event_data->total_bytes_read = 0;
-    event_data->client_state = TEXT_READING_INPUT;
+    event_data->read_buffer = hashtable_malloc_evict_bounded_data(
+        args->hashtable, TEXT_REQUEST_BUFFER_SIZE);
+    if (event_data->read_buffer == NULL) {
+      // Respond with BT_EUNK if the request can't be properly fulfilled due to
+      // lack of memory.
+      event_data->response_type = BT_EUNK;
+      event_data->client_state = TEXT_WRITING_COMMAND;
+    } else {
+      event_data->total_bytes_read = 0;
+      event_data->client_state = TEXT_READING_INPUT;
+    }
   }
 
   // TODO: add a guard here that checks the client state of TEXT_READING_INPUT

@@ -477,8 +477,8 @@ static void *malloc_evict(struct HashTable *hashtable, size_t size) {
 
 // Tries to allocate memory for a BoundedData struct and a buffer of the given
 // size. If it fails return NULL, otherwise return a pointer to the BoundedData
-// struct. Assumes that the hashtable lock is taken by the thread calling this
-// function.
+// struct. If buffer_size is 0, the bounded data struct will be uninitialized.
+// Assumes that the hashtable lock is taken by the thread calling this function.
 static struct BoundedData *
 malloc_evict_bounded_data(struct HashTable *hashtable, size_t buffer_size) {
   struct BoundedData *bounded_data =
@@ -486,6 +486,10 @@ malloc_evict_bounded_data(struct HashTable *hashtable, size_t buffer_size) {
 
   if (bounded_data == NULL) {
     return NULL;
+  }
+
+  if (buffer_size == 0) {
+    return bounded_data;
   }
 
   bounded_data->size = buffer_size;

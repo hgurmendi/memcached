@@ -51,7 +51,7 @@ void event_data_reset(struct EventData *event_data) {
 
 // Initializes an EventData struct.
 void event_data_initialize(struct EventData *event_data, int fd,
-                           enum ConnectionType connection_type_str) {
+                           enum ConnectionType connection_type) {
   event_data->fd = fd;
   event_data->connection_type = connection_type;
   strncpy(event_data->host, "UNINITIALIZED", NI_MAXHOST);

@@ -185,7 +185,6 @@ void handle_take(struct EventData *event_data, struct WorkerArgs *args,
 // operation.
 void handle_put(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key, struct BoundedData *value) {
-  // TODO: handle BT_ERROR!
   int rv = hashtable_insert(args->hashtable, key, value);
   if (rv == HT_ERROR) {
     event_data->response_type = BT_EUNK;
