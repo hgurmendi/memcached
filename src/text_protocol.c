@@ -70,15 +70,29 @@ static int read_until_newline(int incoming_fd, char *buffer, size_t buffer_size,
   return CLIENT_READ_SUCCESS;
 }
 
-// If it's a successful response with content that is not text representable
-// change the response type to EBINARY and clear the response content.
-static void check_is_text_representable(struct EventData *event_data) {
-  if (event_data->response_type == BT_OK &&
-      event_data->response_content != NULL &&
-      !is_text_representable(event_data->response_content->data,
+// Mutates the given EventData struct when the contents are not appropriate for
+// the text protocol, otherwise leave it untouched.
+static void enforce_text_protocol_limitations(struct EventData *event_data) {
+  if (event_data->response_type != BT_OK) {
+    return;
+  }
+
+  if (event_data->response_content == NULL) {
+    return;
+  }
+
+  if (!is_text_representable(event_data->response_content->data,
                              event_data->response_content->size)) {
     event_data->response_type = BT_EBINARY;
     event_data_clear_response_content(event_data);
+    return;
+  }
+
+  if (event_data->response_content->size + strlen("OK \n") >
+      MAX_TEXT_REQUEST_SIZE) {
+    event_data->response_type = BT_EBIG;
+    event_data_clear_response_content(event_data);
+    return;
   }
 }
 
@@ -147,7 +161,7 @@ static void parse_text_request(struct WorkerArgs *args,
     // original pointer will be cleared when the client state is reset.
     key->data = NULL;
     bounded_data_destroy(key);
-    check_is_text_representable(event_data);
+    enforce_text_protocol_limitations(event_data);
     return;
   }
 
@@ -161,7 +175,7 @@ static void parse_text_request(struct WorkerArgs *args,
     // original pointer will be cleared when the client state is reset.
     key->data = NULL;
     bounded_data_destroy(key);
-    check_is_text_representable(event_data);
+    enforce_text_protocol_limitations(event_data);
     return;
   }
 
