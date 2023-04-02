@@ -81,16 +81,16 @@ static void enforce_text_protocol_limitations(struct EventData *event_data) {
     return;
   }
 
-  if (!is_text_representable(event_data->response_content->data,
-                             event_data->response_content->size)) {
-    event_data->response_type = BT_EBINARY;
+  if (event_data->response_content->size + strlen("OK \n") >
+      MAX_TEXT_REQUEST_SIZE) {
+    event_data->response_type = BT_EBIG;
     event_data_clear_response_content(event_data);
     return;
   }
 
-  if (event_data->response_content->size + strlen("OK \n") >
-      MAX_TEXT_REQUEST_SIZE) {
-    event_data->response_type = BT_EBIG;
+  if (!is_text_representable(event_data->response_content->data,
+                             event_data->response_content->size)) {
+    event_data->response_type = BT_EBINARY;
     event_data_clear_response_content(event_data);
     return;
   }
