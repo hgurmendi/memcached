@@ -205,10 +205,8 @@ static int write_command(struct EventData *event_data) {
 // Writes or resumes the writing of a response's content. Returns
 // CLIENT_WRITE_ERROR, CLIENT_WRITE_SUCCESS or CLIENT_WRITE_INCOMPLETE.
 static int write_content(struct EventData *event_data) {
-  char *write_buf = event_data->response_content->data;
-  // Make sure we don't write the trailing '\0', hence the strnlen.
-  size_t write_len = strnlen(write_buf, event_data->response_content->size);
-  return write_buffer(event_data->fd, write_buf, write_len,
+  return write_buffer(event_data->fd, event_data->response_content->data,
+                      event_data->response_content->size,
                       &(event_data->total_bytes_written));
 }
 
@@ -227,9 +225,9 @@ int handle_text_client_response(struct WorkerArgs *args,
   if (event_data->client_state == TEXT_WRITING_COMMAND) {
     rv = write_command(event_data);
     if (rv != CLIENT_WRITE_SUCCESS) {
-      // Return error code if write wasn't successful.
       return rv;
     }
+
     event_data->total_bytes_written = 0;
     if (event_data->response_content != NULL) {
       // Transition to writing the content if there is something.
@@ -243,30 +241,22 @@ int handle_text_client_response(struct WorkerArgs *args,
   if (event_data->client_state == TEXT_WRITING_CONTENT) {
     rv = write_content(event_data);
     if (rv != CLIENT_WRITE_SUCCESS) {
-      // Return error code if write wasn't successful.
       return rv;
     }
     event_data->total_bytes_written = 0;
-    // Transition to writing the trailing newline.
     event_data->client_state = TEXT_WRITING_NEWLINE;
   }
 
   if (event_data->client_state == TEXT_WRITING_NEWLINE) {
-    rv = write_newline(event_data);
-    if (rv != CLIENT_WRITE_SUCCESS) {
-      // Return error code if write wasn't successful.
-      return rv;
-    }
-    // Return a successful write!
-    return CLIENT_WRITE_SUCCESS;
+    return write_newline(event_data);
   }
 
   worker_log(args, "Invalid state reached in handle_text_client_response");
   return CLIENT_WRITE_ERROR;
 }
 
-void handle_text_client_request(struct WorkerArgs *args,
-                                struct epoll_event *event) {
+int handle_text_client_request(struct WorkerArgs *args,
+                               struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
 
   switch (event_data->client_state) {
@@ -274,9 +264,10 @@ void handle_text_client_request(struct WorkerArgs *args,
   case TEXT_READING_INPUT:
     break;
   default:
-    worker_log(args, "Invalid state in handle_text_client_request\n");
-    event_data_close_client(event_data);
-    return;
+    worker_log(args, "Invalid state in handle_text_client_request: %s",
+               client_state_str(event_data->client_state));
+    return CLIENT_READ_ERROR;
+    break;
   }
 
   // If we didn't start reading from the client yet, prepare everything and
@@ -289,25 +280,18 @@ void handle_text_client_request(struct WorkerArgs *args,
     event_data->client_state = TEXT_READING_INPUT;
   }
 
+  // TODO: add a guard here that checks the client state of TEXT_READING_INPUT
+  // and in that case runs read_until_newline. We also should respond EINVAL
+  // when the request is too long
+
   // Read until a newline is found within the request size limit and leave it in
   // the buffer with a null character next to it. Otherwise, return an error.
   int rv = read_until_newline(event_data->fd, event_data->read_buffer->data,
                               event_data->read_buffer->size,
                               &(event_data->total_bytes_read),
                               MAX_TEXT_REQUEST_SIZE);
-  switch (rv) {
-  case CLIENT_READ_SUCCESS:
-    break;
-  case CLIENT_READ_INCOMPLETE:
-    worker_log(args, "Read incomplete, waiting for more data.");
-    epoll_mod_client(args->epoll_fd, event, EPOLLIN);
-    return;
-  case CLIENT_READ_CLOSED:
-    worker_log(args, "Client closed the connection.");
-  case CLIENT_READ_ERROR:
-  default:
-    event_data_close_client(event_data);
-    return;
+  if (rv != CLIENT_READ_SUCCESS) {
+    return rv;
   }
 
   // Parse the text request. In there we make sure the text protcol format is
@@ -316,20 +300,6 @@ void handle_text_client_request(struct WorkerArgs *args,
 
   // Transition to writing the command.
   event_data->client_state = TEXT_WRITING_COMMAND;
-
-  rv = handle_text_client_response(args, event);
-  if (rv == CLIENT_WRITE_INCOMPLETE) {
-    // Re-register the client in epoll so we can continue writing later.
-    worker_log(args, "FOUND A CLIENT WHOSE WRITE IS INCOMPLETE");
-    epoll_mod_client(args->epoll_fd, event, EPOLLOUT);
-    return;
-  } else if (rv == CLIENT_WRITE_ERROR) {
-    event_data_close_client(event_data);
-    return;
-  }
-
-  // reset the client state so we can read again.
-  event_data_reset(event_data);
-  // re-register him to read again on next stimulus.
-  epoll_mod_client(args->epoll_fd, event, EPOLLIN);
+  event_data->total_bytes_written = 0;
+  return handle_text_client_response(args, event);
 }

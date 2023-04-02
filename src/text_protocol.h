@@ -8,7 +8,7 @@
 int handle_text_client_response(struct WorkerArgs *args,
                                 struct epoll_event *event);
 
-void handle_text_client_request(struct WorkerArgs *args,
-                                struct epoll_event *event);
+int handle_text_client_request(struct WorkerArgs *args,
+                               struct epoll_event *event);
 
 #endif

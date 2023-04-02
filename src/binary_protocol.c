@@ -4,25 +4,11 @@
 #include "epoll.h"    // for struct EventData
 #include "protocol.h" // for read_buffer
 
-// Handles an unsuccessful read from a binary client.
-static void handle_unsuccessful_write(int rv, struct WorkerArgs *args,
-                                      struct epoll_event *event) {
-  struct EventData *event_data = event->data.ptr;
-
-  if (rv == CLIENT_WRITE_INCOMPLETE) {
-    worker_log(args, "Write incomplete while in state <%s>, waiting for more",
-               client_state_str(event_data->client_state));
-    epoll_mod_client(args->epoll_fd, event, EPOLLOUT);
-    return;
-  } else if (rv == CLIENT_WRITE_ERROR) {
-    worker_log(args, "Error when writing to client.");
-    event_data_close_client(event_data);
-    return;
-  }
-}
-
-void handle_binary_client_response(struct WorkerArgs *args,
-                                   struct epoll_event *event) {
+// Handles writing the response for a binary client in whatever write state it
+// is and returns CLIENT_WRITE_ERROR, CLIENT_WRITE_SUCCESS or
+// CLIENT_WRITE_INCOMPLETE.
+int handle_binary_client_response(struct WorkerArgs *args,
+                                  struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
   int rv;
 
@@ -35,8 +21,8 @@ void handle_binary_client_response(struct WorkerArgs *args,
   default:
     worker_log(args, "Invalid state in handle_binary_client_response: %s\n",
                client_state_str(event_data->client_state));
-    event_data_close_client(event_data);
-    return;
+    return CLIENT_READ_ERROR;
+    break;
   }
 
   // Start handling the response by going through all the states in order.
@@ -45,8 +31,7 @@ void handle_binary_client_response(struct WorkerArgs *args,
     int rv = write_buffer(event_data->fd, &(event_data->response_type), 1,
                           &(event_data->total_bytes_written));
     if (rv != CLIENT_WRITE_SUCCESS) {
-      handle_unsuccessful_write(rv, args, event);
-      return;
+      return rv;
     }
 
     // Reset the total bytes written counter and determine the next state
@@ -63,7 +48,7 @@ void handle_binary_client_response(struct WorkerArgs *args,
     if (event_data->response_content != NULL) {
       event_data->client_state = BINARY_WRITING_CONTENT_SIZE;
     } else {
-      // we're done?
+      return CLIENT_WRITE_SUCCESS;
     }
   }
 
@@ -72,8 +57,7 @@ void handle_binary_client_response(struct WorkerArgs *args,
     rv = write_buffer(event_data->fd, (char *)&content_size,
                       sizeof(content_size), &(event_data->total_bytes_written));
     if (rv != CLIENT_WRITE_SUCCESS) {
-      handle_unsuccessful_write(rv, args, event);
-      return;
+      return rv;
     }
 
     // Reset the total bytes written counter and transition uncondinitionally to
@@ -87,40 +71,22 @@ void handle_binary_client_response(struct WorkerArgs *args,
     rv = write_buffer(event_data->fd, event_data->response_content->data,
                       event_data->response_content->size,
                       &(event_data->total_bytes_written));
-    if (rv != CLIENT_WRITE_SUCCESS) {
-      handle_unsuccessful_write(rv, args, event);
-      return;
-    }
 
-    // At this point we successfully finished writing the contents of the
-    // response. We have to re-register the client so we can start reading.
+    // Unconditionally return the return value of write_buffer since at this
+    // point we either successfully finished writing the contents of the
+    // response or an error happened or we can't finish writing to the client.
+    return rv;
   }
+
+  worker_log(args, "Invalid state reached in handle_binary_client_response");
+  return CLIENT_WRITE_ERROR;
 }
 
-// Handles an unsuccessful read from a binary client.
-static void handle_unsuccessful_read(int rv, struct WorkerArgs *args,
-                                     struct epoll_event *event) {
-  struct EventData *event_data = event->data.ptr;
-
-  if (rv == CLIENT_READ_INCOMPLETE) {
-    worker_log(args, "Read incomplete while in state <%s>, waiting for more",
-               client_state_str(event_data->client_state));
-    epoll_mod_client(args->epoll_fd, event, EPOLLIN);
-    return;
-  } else if (rv == CLIENT_READ_CLOSED) {
-    worker_log(args, "Client closed the connection.");
-    event_data_close_client(event_data);
-    return;
-  } else if (rv == CLIENT_READ_ERROR) {
-    worker_log(args, "Error when reading from client.");
-    event_data_close_client(event_data);
-    return;
-  }
-}
-
-// Huge function that handles a binary client request in any read state.
-void handle_binary_client_request(struct WorkerArgs *args,
-                                  struct epoll_event *event) {
+// Handles reading the request from a binary client in whatever read state it
+// is and returns CLIENT_READ_ERROR, CLIENT_READ_SUCCESS, CLIENT_READ_CLOSED or
+// CLIENT_READ_INCOMPLETE.
+int handle_binary_client_request(struct WorkerArgs *args,
+                                 struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
   int rv;
 
@@ -134,9 +100,9 @@ void handle_binary_client_request(struct WorkerArgs *args,
   case BINARY_READING_ARG2_DATA:
     break;
   default:
-    worker_log(args, "Invalid state in handle_binary_client_request: %s\n",
+    worker_log(args, "Invalid state in handle_binary_client_request: %s",
                client_state_str(event_data->client_state));
-    event_data_close_client(event_data);
+    return CLIENT_READ_ERROR;
     break;
   }
 
@@ -153,8 +119,7 @@ void handle_binary_client_request(struct WorkerArgs *args,
     rv = read_buffer(event_data->fd, &(event_data->command_type), 1,
                      &(event_data->total_bytes_read));
     if (rv != CLIENT_READ_SUCCESS) {
-      handle_unsuccessful_read(rv, args, event);
-      return;
+      return rv;
     }
 
     // Reset the total bytes read counter and determine the next state depending
@@ -190,8 +155,7 @@ void handle_binary_client_request(struct WorkerArgs *args,
                      sizeof(event_data->arg_size),
                      &(event_data->total_bytes_read));
     if (rv != CLIENT_READ_SUCCESS) {
-      handle_unsuccessful_read(rv, args, event);
-      return;
+      return rv;
     }
 
     // Reset the total bytes read counter and prepare to read the contents of
@@ -211,8 +175,7 @@ void handle_binary_client_request(struct WorkerArgs *args,
     rv = read_buffer(event_data->fd, event_data->arg1->data,
                      event_data->arg1->size, &(event_data->total_bytes_read));
     if (rv != CLIENT_READ_SUCCESS) {
-      handle_unsuccessful_read(rv, args, event);
-      return;
+      return rv;
     }
 
     // Reset the total bytes read counter and determine the next state depending
@@ -222,7 +185,7 @@ void handle_binary_client_request(struct WorkerArgs *args,
     // and start writing the response, so we transition to
     // BINARY_WRITING_COMMAND.
     // - If the command is PUT then we need to parse one more command, so we
-    // transition to BINARY_READING_ARG1_SIZE.
+    // transition to BINARY_READING_ARG2_SIZE.
     // - In any other case, we're in the presence of an invalid state, so we log
     // it just in case.
 
@@ -246,9 +209,7 @@ void handle_binary_client_request(struct WorkerArgs *args,
     default:
       worker_log(args, "Processing invalid command in state %s.",
                  client_state_str(event_data->client_state));
-      event_data->response_type = BT_EINVAL;
-      event_data->client_state = BINARY_WRITING_COMMAND;
-      break;
+      return CLIENT_READ_ERROR;
     }
   }
 
@@ -257,8 +218,7 @@ void handle_binary_client_request(struct WorkerArgs *args,
                      sizeof(event_data->arg_size),
                      &(event_data->total_bytes_read));
     if (rv != CLIENT_READ_SUCCESS) {
-      handle_unsuccessful_read(rv, args, event);
-      return;
+      return rv;
     }
 
     // Reset the total bytes read counter and prepare to read the contents of
@@ -278,8 +238,7 @@ void handle_binary_client_request(struct WorkerArgs *args,
     rv = read_buffer(event_data->fd, event_data->arg2->data,
                      event_data->arg2->size, &(event_data->total_bytes_read));
     if (rv != CLIENT_READ_SUCCESS) {
-      handle_unsuccessful_read(rv, args, event);
-      return;
+      return rv;
     }
 
     // If we're here we must be processing a PUT command, so we handle it
@@ -299,19 +258,16 @@ void handle_binary_client_request(struct WorkerArgs *args,
     } else {
       worker_log(args, "Processing invalid command in state %s.",
                  client_state_str(event_data->client_state));
-      event_data->response_type = BT_EINVAL;
-      event_data->client_state = BINARY_WRITING_COMMAND;
+      return CLIENT_READ_ERROR;
     }
   }
 
   if (event_data->client_state == BINARY_WRITING_COMMAND) {
     // Reset the total bytes written and start handling the response.
     event_data->total_bytes_written = 0;
-    handle_binary_client_response(args, event);
-    return;
+    return handle_binary_client_response(args, event);
   }
 
-  worker_log(args, "Shouldn't reach this place in state <%s> and command <%s>",
-             client_state_str(event_data->client_state),
-             binary_type_str(event_data->command_type));
+  worker_log(args, "Invalid state reached in handle_binary_client_request");
+  return CLIENT_READ_ERROR;
 }

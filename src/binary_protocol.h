@@ -5,10 +5,10 @@
 
 #include "worker_state.h" // for struct WorkerArgs
 
-void handle_binary_client_response(struct WorkerArgs *args,
-                                   struct epoll_event *event);
-
-void handle_binary_client_request(struct WorkerArgs *args,
+int handle_binary_client_response(struct WorkerArgs *args,
                                   struct epoll_event *event);
+
+int handle_binary_client_request(struct WorkerArgs *args,
+                                 struct epoll_event *event);
 
 #endif

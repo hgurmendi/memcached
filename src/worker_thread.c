@@ -10,6 +10,7 @@
 
 #include "binary_protocol.h"
 #include "epoll.h"
+#include "protocol.h"
 #include "sockets.h"
 #include "text_protocol.h"
 #include "worker_state.h"
@@ -93,30 +94,85 @@ static void accept_connections(struct WorkerArgs *worker_args,
   }
 }
 
+// Handles the outcome of a client's request or response handling.
+static void handle_client_outcome(int rv, struct WorkerArgs *args,
+                                  struct epoll_event *event) {
+  struct EventData *event_data = event->data.ptr;
+
+  switch (rv) {
+  case CLIENT_READ_INCOMPLETE:
+    worker_log(args, "Read incomplete while in state <%s>, waiting for more.",
+               client_state_str(event_data->client_state));
+    epoll_mod_client(args->epoll_fd, event, EPOLLIN);
+    break;
+  case CLIENT_WRITE_INCOMPLETE:
+    worker_log(args, "Write incomplete while in state <%s>, waiting for more.",
+               client_state_str(event_data->client_state));
+    epoll_mod_client(args->epoll_fd, event, EPOLLOUT);
+    break;
+  case CLIENT_READ_ERROR:
+    worker_log(args, "Read error while in state <%s>, killing connection.",
+               client_state_str(event_data->client_state));
+    event_data_close_client(event_data);
+    break;
+  case CLIENT_WRITE_ERROR:
+    worker_log(args, "Write error while in state <%s>, killing connection.",
+               client_state_str(event_data->client_state));
+    event_data_close_client(event_data);
+    break;
+  case CLIENT_READ_CLOSED:
+    worker_log(args, "Client terminated the connection while in state <%s>.",
+               client_state_str(event_data->client_state));
+    event_data_close_client(event_data);
+    break;
+  case CLIENT_WRITE_SUCCESS:
+    worker_log(args, "Request successfully handled");
+    // Read next request.
+    event_data_reset(event_data);
+    epoll_mod_client(args->epoll_fd, event, EPOLLIN);
+    break;
+  case CLIENT_READ_SUCCESS:
+  // Fall-through!
+  default:
+    worker_log(args, "Invalid outcome received, probably an error");
+    event_data_close_client(event_data);
+    break;
+  }
+}
+
 static void handle_client(struct WorkerArgs *args, struct epoll_event *event) {
   struct EventData *event_data = event->data.ptr;
+  int rv;
 
   if (event->events & EPOLLIN) {
     worker_log(args, "fd %d (%s) is ready to read (state %s)...",
                event_data->fd, connection_type_str(event_data->connection_type),
                client_state_str(event_data->client_state));
-    if (event_data->connection_type == TEXT) {
-      handle_text_client_request(args, event);
-    } else {
-      handle_binary_client_request(args, event);
-    }
-  }
 
-  if (event->events & EPOLLOUT) {
+    if (event_data->connection_type == TEXT) {
+      rv = handle_text_client_request(args, event);
+    } else {
+      rv = handle_binary_client_request(args, event);
+    }
+
+    handle_client_outcome(rv, args, event);
+    return;
+  } else if (event->events & EPOLLOUT) {
     worker_log(args, "fd %d (%s) is ready to write (state %s)...",
                event_data->fd, connection_type_str(event_data->connection_type),
                client_state_str(event_data->client_state));
+
     if (event_data->connection_type == TEXT) {
-      handle_text_client_response(args, event);
+      rv = handle_text_client_response(args, event);
     } else {
-      handle_binary_client_response(args, event);
+      rv = handle_binary_client_response(args, event);
     }
+
+    handle_client_outcome(rv, args, event);
+    return;
   }
+
+  worker_log(args, "Never should reach here...");
 }
 
 // Worker thread function.

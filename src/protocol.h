@@ -7,14 +7,14 @@
 #include "bounded_data_hashtable.h" // for struct HashTable
 #include "epoll.h"                  // for struct EventData
 
-#define CLIENT_WRITE_ERROR -1
-#define CLIENT_WRITE_SUCCESS 1
-#define CLIENT_WRITE_INCOMPLETE 2
-
-#define CLIENT_READ_ERROR -1
+#define CLIENT_READ_ERROR -1001
 #define CLIENT_READ_CLOSED 0
-#define CLIENT_READ_SUCCESS 1
-#define CLIENT_READ_INCOMPLETE 2
+#define CLIENT_READ_SUCCESS 1001
+#define CLIENT_READ_INCOMPLETE 1002
+
+#define CLIENT_WRITE_ERROR -2001
+#define CLIENT_WRITE_SUCCESS 2001
+#define CLIENT_WRITE_INCOMPLETE 2002
 
 // Adds the given client event back to the epoll interest list. Returns 0 if
 // successful, -1 otherwise.
