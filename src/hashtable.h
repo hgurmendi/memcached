@@ -42,7 +42,9 @@ struct HashTable *hashtable_create(uint64_t num_buckets);
 // HT_NOTFOUND and the keyand value pointers become "owned" by the hash table.
 // If the key does already exist in the hash table, the function returns
 // HT_FOUND, the given key pointer becomes owned by the hash table, the old key
-// pointer is destroyed (!!) and the old value pointer is destroyed (!!).
+// pointer is destroyed (!!) and the old value pointer is destroyed (!!). If
+// there is not enough memory for the new entry after evictions, both key and
+// value pointers are destroyed and HT_ERROR is returned.
 int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
                      struct BoundedData *value);
 
@@ -54,7 +56,8 @@ int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
 // already exist in the hash table, the function returns HT_FOUND and the given
 // value pointer is modified so that it holds a pointer to a copy of the value
 // associated to the given key in the hash table. The pointer of the given key
-// is owned by the client.
+// is owned by the client. If there is not enough memory for the duplicate of
+// the value then HT_ERROR is returned.
 int hashtable_get(struct HashTable *hashtable, struct BoundedData *key,
                   struct BoundedData **value);
 
@@ -90,10 +93,5 @@ void hashtable_destroy(struct HashTable *hashtable);
 
 // Returns the number of keys stored in the hash table.
 uint64_t hashtable_key_count(struct HashTable *hashtable);
-
-// Evicts the least recently used entry from the hashtable. If there are no
-// entries in the cache then we return HT_NOTFOUND. Otherwise, we evict the
-// least recently used one and return HT_FOUND.
-int hashtable_evict_lru(struct HashTable *hashtable);
 
 #endif

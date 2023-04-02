@@ -1,29 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "hashtable.h"
+#include "parameters.h"
 
-// Allocates memory for a bucket node, stores the given key and value in it and
-// returns a pointer to the bucket node struct.
-static struct BucketNode *bucket_node_create(struct BoundedData *key,
-                                             struct BoundedData *value) {
-  // Allocate memory for the bucket node.
-  struct BucketNode *node = malloc(sizeof(struct BucketNode));
-  if (node == NULL) {
-    perror("bucket_node_create malloc");
-    abort();
-  }
+// Prototypes for internal functions.
+static int evict_lru(struct HashTable *hashtable);
+static void *malloc_evict(struct HashTable *hashtable, size_t size);
+static struct BoundedData *
+malloc_evict_bounded_data(struct HashTable *hashtable, size_t buffer_size);
 
-  node->key = key;
-  node->value = value;
-  node->next = NULL;
-  node->usage_node = NULL;
-
-  return node;
-}
-
-// Frees the memory allocated for a bucket node. The key and value stored in the
-// node should have been freed already.
+// Frees the memory allocated for a bucket node. The key and value stored in
+// the node should have been freed already.
 static void bucket_node_destroy(struct BucketNode *node) {
   // We assume that the key and value members were already freed.
   free(node);
@@ -74,27 +63,6 @@ static uint64_t hashtable_get_bucket_index(struct HashTable *hashtable,
   return key_hash % hashtable->num_buckets;
 }
 
-// Allocates memory for a new, unlinked and empty usage node and returns a
-// pointer to it. Returns NULL if it couldn't be allocated.
-static struct UsageNode *usage_node_create() {
-  struct UsageNode *new_usage_node = malloc(sizeof(struct UsageNode));
-  if (new_usage_node == NULL) {
-    perror("usage_node_create malloc");
-    return NULL;
-  }
-
-  new_usage_node->less_used = NULL;
-  new_usage_node->more_used = NULL;
-  new_usage_node->bucket_node = NULL;
-
-  return new_usage_node;
-}
-
-// Frees the memory of an existing usage node.
-static void usage_node_destroy(struct UsageNode *usage_node) {
-  free(usage_node);
-}
-
 // Given a usage node that is not in the usage queue, add it as the most used
 // node.
 static void
@@ -143,7 +111,9 @@ static void hashtable_remove_usage_node(struct HashTable *hashtable,
 // HT_NOTFOUND and the keyand value pointers become "owned" by the hash table.
 // If the key does already exist in the hash table, the function returns
 // HT_FOUND, the given key pointer becomes owned by the hash table, the old key
-// pointer is destroyed (!!) and the old value pointer is destroyed (!!).
+// pointer is destroyed (!!) and the old value pointer is destroyed (!!). If
+// there is not enough memory for the new entry after evictions, both key and
+// value pointers are destroyed and HT_ERROR is returned.
 int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
                      struct BoundedData *value) {
   // Determine the bucket index for the key.
@@ -180,11 +150,28 @@ int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
     current_node = current_node->next;
   }
 
-  // Didn't find the key. Add it to the bucket.
-  struct BucketNode *new_node = bucket_node_create(key, value);
+  // Didn't find the key. Create a bucket node and add it to the bucket.
+  struct BucketNode *new_node =
+      malloc_evict(hashtable, sizeof(struct BucketNode));
+  if (new_node == NULL) {
+    pthread_mutex_unlock(hashtable->mutex);
+    return HT_ERROR;
+  }
+  new_node->key = key;
+  new_node->value = value;
+  new_node->next = NULL;       // Just in case.
+  new_node->usage_node = NULL; // Just in case.
 
   // Create and set the new node as the most recently used one.
-  struct UsageNode *new_usage_node = usage_node_create();
+  struct UsageNode *new_usage_node =
+      malloc_evict(hashtable, sizeof(struct UsageNode));
+  if (new_usage_node == NULL) {
+    free(new_node);
+    pthread_mutex_unlock(hashtable->mutex);
+    return HT_ERROR;
+  }
+  new_usage_node->less_used = NULL; // Just in case.
+  new_usage_node->more_used = NULL; // Just in case.
   new_usage_node->bucket_node = new_node;
   new_node->usage_node = new_usage_node;
   hashtable_insert_as_most_used_usage_node(hashtable, new_usage_node);
@@ -210,7 +197,8 @@ int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
 // already exist in the hash table, the function returns HT_FOUND and the given
 // value pointer is modified so that it holds a pointer to a copy of the value
 // associated to the given key in the hash table. The pointer of the given key
-// is owned by the client.
+// is owned by the client. If there is not enough memory for the duplicate of
+// the value then HT_ERROR is returned.
 int hashtable_get(struct HashTable *hashtable, struct BoundedData *key,
                   struct BoundedData **value) {
   // Determine the bucket index for the key.
@@ -224,7 +212,14 @@ int hashtable_get(struct HashTable *hashtable, struct BoundedData *key,
     if (bounded_data_equals(current_node->key, key)) {
       // Found it!
       // Get a copy of the value and "return" a pointer to it.
-      *value = bounded_data_duplicate(current_node->value);
+      struct BoundedData *copy =
+          malloc_evict_bounded_data(hashtable, current_node->value->size);
+      if (copy == NULL) {
+        pthread_mutex_unlock(hashtable->mutex);
+        return HT_ERROR;
+      }
+      memcpy(copy->data, current_node->value->data, current_node->value->size);
+      *value = copy;
 
       // Set as the most used.
       hashtable_remove_usage_node(hashtable, current_node->usage_node);
@@ -270,7 +265,7 @@ int hashtable_take(struct HashTable *hashtable, struct BoundedData *key,
 
       // Remove and destroy the usage node for the current bucket node.
       hashtable_remove_usage_node(hashtable, current_node->usage_node);
-      usage_node_destroy(current_node->usage_node);
+      free(current_node->usage_node);
 
       // "Return" a pointer to the actual value and "remove" it from the bucket
       // node.
@@ -291,7 +286,7 @@ int hashtable_take(struct HashTable *hashtable, struct BoundedData *key,
       }
 
       // Destroy the bucket node of the key-value pair.
-      bucket_node_destroy(current_node);
+      free(current_node);
 
       // Decrease the keys counter.
       hashtable->key_count--;
@@ -382,8 +377,8 @@ static void hashtable_destroy_bucket(struct HashTable *hashtable,
     current_node = current_node->next;
     bounded_data_destroy(node_to_destroy->key);
     bounded_data_destroy(node_to_destroy->value);
-    usage_node_destroy(node_to_destroy->usage_node);
-    bucket_node_destroy(node_to_destroy);
+    free(node_to_destroy->usage_node);
+    free(node_to_destroy);
   }
 }
 
@@ -412,14 +407,12 @@ uint64_t hashtable_key_count(struct HashTable *hashtable) {
 
 // Evicts the least recently used entry from the hashtable. If there are no
 // entries in the cache then we return HT_NOTFOUND. Otherwise, we evict the
-// least recently used one and return HT_FOUND.
-int hashtable_evict_lru(struct HashTable *hashtable) {
-
-  pthread_mutex_lock(hashtable->mutex);
+// least recently used one and return HT_FOUND. Assumes that the hashtable lock
+// is taken by the thread calling this function.
+static int evict_lru(struct HashTable *hashtable) {
 
   struct UsageNode *least_used = hashtable->least_used;
   if (least_used == NULL) {
-    pthread_mutex_unlock(hashtable->mutex);
     return HT_NOTFOUND;
   }
 
@@ -444,11 +437,64 @@ int hashtable_evict_lru(struct HashTable *hashtable) {
   hashtable_remove_usage_node(hashtable, least_used);
   bounded_data_destroy(victim_bucket_node->key);
   bounded_data_destroy(victim_bucket_node->value);
-  usage_node_destroy(least_used);
-  bucket_node_destroy(victim_bucket_node);
+  free(least_used);
+  free(victim_bucket_node);
 
   hashtable->key_count--;
 
-  pthread_mutex_unlock(hashtable->mutex);
   return HT_FOUND;
+}
+
+// Performs hashtable evictions until the maximum evictions per operation is
+// reached or until the memory is successfully allocated. Returns a pointer to
+// the allocated space if successful or NULL if it wasn't possible to allocate
+// memory. Assumes that the hashtable lock is taken by the thread calling this
+// function.
+static void *malloc_evict(struct HashTable *hashtable, size_t size) {
+  int remaining_evictions = MAX_EVICTIONS_PER_OPERATION;
+  void *ptr = NULL;
+  int rv;
+
+  do {
+    ptr = malloc(size);
+    if (ptr == NULL) {
+      // TODO: remove after testing.
+      printf("EVICTION FROM MALLOC #%d/%d!\n",
+             MAX_EVICTIONS_PER_OPERATION - remaining_evictions + 1,
+             MAX_EVICTIONS_PER_OPERATION);
+      rv = evict_lru(hashtable);
+      if (rv == HT_NOTFOUND) {
+        printf("HUGE ERROR\n");
+        return NULL;
+      }
+      // Keep trying
+      remaining_evictions--;
+      continue;
+    }
+    // Success!
+    return ptr;
+  } while (remaining_evictions > 0);
+}
+
+// Tries to allocate memory for a BoundedData struct and a buffer of the given
+// size. If it fails return NULL, otherwise return a pointer to the BoundedData
+// struct. Assumes that the hashtable lock is taken by the thread calling this
+// function.
+static struct BoundedData *
+malloc_evict_bounded_data(struct HashTable *hashtable, size_t buffer_size) {
+  struct BoundedData *bounded_data =
+      hashtable_malloc_evict(hashtable, sizeof(struct BoundedData));
+
+  if (bounded_data == NULL) {
+    return NULL;
+  }
+
+  bounded_data->size = buffer_size;
+  bounded_data->data = hashtable_malloc_evict(hashtable, buffer_size);
+  if (bounded_data->data == NULL) {
+    free(bounded_data);
+    return NULL;
+  }
+
+  return bounded_data;
 }
