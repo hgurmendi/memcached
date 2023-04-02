@@ -11,13 +11,6 @@ static void *malloc_evict(struct HashTable *hashtable, size_t size);
 static struct BoundedData *
 malloc_evict_bounded_data(struct HashTable *hashtable, size_t buffer_size);
 
-// Frees the memory allocated for a bucket node. The key and value stored in
-// the node should have been freed already.
-static void bucket_node_destroy(struct BucketNode *node) {
-  // We assume that the key and value members were already freed.
-  free(node);
-}
-
 // Allocates memory for a hash table (including all its buckets, the mutex and
 // the usage queue) and stores the callback for the hash function.
 struct HashTable *hashtable_create(uint64_t num_buckets) {
@@ -474,6 +467,8 @@ static void *malloc_evict(struct HashTable *hashtable, size_t size) {
     // Success!
     return ptr;
   } while (remaining_evictions > 0);
+
+  return NULL;
 }
 
 // Tries to allocate memory for a BoundedData struct and a buffer of the given
@@ -483,14 +478,14 @@ static void *malloc_evict(struct HashTable *hashtable, size_t size) {
 static struct BoundedData *
 malloc_evict_bounded_data(struct HashTable *hashtable, size_t buffer_size) {
   struct BoundedData *bounded_data =
-      hashtable_malloc_evict(hashtable, sizeof(struct BoundedData));
+      malloc_evict(hashtable, sizeof(struct BoundedData));
 
   if (bounded_data == NULL) {
     return NULL;
   }
 
   bounded_data->size = buffer_size;
-  bounded_data->data = hashtable_malloc_evict(hashtable, buffer_size);
+  bounded_data->data = malloc_evict(hashtable, buffer_size);
   if (bounded_data->data == NULL) {
     free(bounded_data);
     return NULL;
