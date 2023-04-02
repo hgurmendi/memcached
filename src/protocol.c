@@ -102,73 +102,78 @@ int read_buffer(int fd, char *buffer, size_t buffer_size,
 #define STATS_CONTENT_MAX_SIZE 256
 
 // Handles the STATS command and mutates the EventData instance accordingly.
-void handle_stats(struct EventData *event_data, struct HashTable *hashtable) {
+void handle_stats(struct EventData *event_data, struct WorkerArgs *args) {
   char stats_content[STATS_CONTENT_MAX_SIZE];
+  struct WorkerStats aggregated_stats;
 
-  // TODO: fill the rest later.
-  uint64_t num_puts = 420;
-  uint64_t num_dels = 69;
-  uint64_t num_gets = 42069;
-  uint64_t num_takes = 123;
-  uint64_t num_stats = 3010;
-  uint64_t num_keys = bd_hashtable_key_count(hashtable);
+  worker_stats_initialize(&aggregated_stats);
+  worker_stats_reduce(args->workers_stats, args->num_workers,
+                      &aggregated_stats);
+  uint64_t num_keys = bd_hashtable_key_count(args->hashtable);
 
   int bytes_written =
       snprintf(stats_content, STATS_CONTENT_MAX_SIZE,
                "PUTS=%ld DELS=%ld GETS=%ld TAKES=%ld STATS=%ld KEYS=%ld",
-               num_puts, num_dels, num_gets, num_takes, num_stats, num_keys);
+               aggregated_stats.put_count, aggregated_stats.del_count,
+               aggregated_stats.get_count, aggregated_stats.take_count,
+               aggregated_stats.stats_count, num_keys);
 
   event_data->response_type = BT_OK;
   // The response content doesn't include the trailing '\0'.
   event_data->response_content =
       bounded_data_create_from_buffer_duplicate(stats_content, bytes_written);
+  args->workers_stats[args->worker_id].stats_count++;
 }
 
 // Handles the DEL command and mutates the EventData instance accordingly.
 // WARNING: does not free the `key` pointer.
-void handle_del(struct EventData *event_data, struct HashTable *hashtable,
+void handle_del(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key) {
-  int rv = bd_hashtable_remove(hashtable, key);
+  int rv = bd_hashtable_remove(args->hashtable, key);
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
   } else {
     event_data->response_type = BT_ENOTFOUND;
   }
+  args->workers_stats[args->worker_id].del_count++;
 }
 
 // Handles the GET command and mutates the EventData instance accordingly.
 // WARNING: does not free the `key` pointer.
-void handle_get(struct EventData *event_data, struct HashTable *hashtable,
+void handle_get(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key) {
   struct BoundedData *value = NULL;
-  int rv = bd_hashtable_get(hashtable, key, &value);
+  int rv = bd_hashtable_get(args->hashtable, key, &value);
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
     event_data->response_content = value;
   } else {
     event_data->response_type = BT_ENOTFOUND;
   }
+  args->workers_stats[args->worker_id].get_count++;
 }
 
 // Handles the TAKE command and mutates the EventData instance accordingly.
 // WARNING: does not free the `key` pointer.
-void handle_take(struct EventData *event_data, struct HashTable *hashtable,
+void handle_take(struct EventData *event_data, struct WorkerArgs *args,
                  struct BoundedData *key) {
   struct BoundedData *value = NULL;
-  int rv = bd_hashtable_take(hashtable, key, &value);
+  int rv = bd_hashtable_take(args->hashtable, key, &value);
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
     event_data->response_content = value;
   } else {
     event_data->response_type = BT_ENOTFOUND;
   }
+  args->workers_stats[args->worker_id].take_count++;
 }
 
 // Handles the PUT command and mutates the EventData instance accordingly.
 // WARNING: the key and value pointer are owned by the hash table after the
 // operation.
-void handle_put(struct EventData *event_data, struct HashTable *hashtable,
+void handle_put(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key, struct BoundedData *value) {
-  bd_hashtable_insert(hashtable, key, value);
+  bd_hashtable_insert(args->hashtable, key, value);
   event_data->response_type = BT_OK;
+  args->workers_stats[args->worker_id].put_count++;
 }

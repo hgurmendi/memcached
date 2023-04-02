@@ -134,7 +134,7 @@ int handle_binary_client_request(struct WorkerArgs *args,
     event_data->total_bytes_read = 0;
     switch (event_data->command_type) {
     case BT_STATS:
-      handle_stats(event_data, args->hashtable);
+      handle_stats(event_data, args);
       event_data->client_state = BINARY_WRITING_COMMAND;
       break;
     case BT_DEL:
@@ -192,15 +192,15 @@ int handle_binary_client_request(struct WorkerArgs *args,
     event_data->total_bytes_read = 0;
     switch (event_data->command_type) {
     case BT_DEL:
-      handle_del(event_data, args->hashtable, event_data->arg1);
+      handle_del(event_data, args, event_data->arg1);
       event_data->client_state = BINARY_WRITING_COMMAND;
       break;
     case BT_GET:
-      handle_get(event_data, args->hashtable, event_data->arg1);
+      handle_get(event_data, args, event_data->arg1);
       event_data->client_state = BINARY_WRITING_COMMAND;
       break;
     case BT_TAKE:
-      handle_take(event_data, args->hashtable, event_data->arg1);
+      handle_take(event_data, args, event_data->arg1);
       event_data->client_state = BINARY_WRITING_COMMAND;
       break;
     case BT_PUT:
@@ -249,8 +249,7 @@ int handle_binary_client_request(struct WorkerArgs *args,
     // the presence of a bad state, so we log it just in case.
 
     if (event_data->command_type == BT_PUT) {
-      handle_put(event_data, args->hashtable, event_data->arg1,
-                 event_data->arg2);
+      handle_put(event_data, args, event_data->arg1, event_data->arg2);
       // Both pointers will be owned by the hash table now.
       event_data->arg1 = NULL;
       event_data->arg2 = NULL;

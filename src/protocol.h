@@ -6,6 +6,7 @@
 
 #include "bounded_data_hashtable.h" // for struct HashTable
 #include "epoll.h"                  // for struct EventData
+#include "worker_state.h"           // for struct WorkerArgs
 
 #define CLIENT_READ_ERROR -1001
 #define CLIENT_READ_CLOSED 0
@@ -42,27 +43,27 @@ int read_buffer(int fd, char *buffer, size_t buffer_size,
                 size_t *total_bytes_read);
 
 // Handles the STATS command and mutates the EventData instance accordingly.
-void handle_stats(struct EventData *event_data, struct HashTable *hashtable);
+void handle_stats(struct EventData *event_data, struct WorkerArgs *args);
 
 // Handles the DEL command and mutates the EventData instance accordingly.
 // WARNING: does not free the `key` pointer.
-void handle_del(struct EventData *event_data, struct HashTable *hashtable,
+void handle_del(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key);
 
 // Handles the GET command and mutates the EventData instance accordingly.
 // WARNING: does not free the `key` pointer.
-void handle_get(struct EventData *event_data, struct HashTable *hashtable,
+void handle_get(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key);
 
 // Handles the TAKE command and mutates the EventData instance accordingly.
 // WARNING: does not free the `key` pointer.
-void handle_take(struct EventData *event_data, struct HashTable *hashtable,
+void handle_take(struct EventData *event_data, struct WorkerArgs *args,
                  struct BoundedData *key);
 
 // Handles the PUT command and mutates the EventData instance accordingly.
 // WARNING: the key and value pointer are owned by the hash table after the
 // operation.
-void handle_put(struct EventData *event_data, struct HashTable *hashtable,
+void handle_put(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key, struct BoundedData *value);
 
 #endif

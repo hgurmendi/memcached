@@ -120,14 +120,14 @@ static void parse_text_request(struct WorkerArgs *args,
   event_data->response_type = BT_EINVAL;
 
   if (argument_count == 0 && !strcmp(command, binary_type_str(BT_STATS))) {
-    handle_stats(event_data, args->hashtable);
+    handle_stats(event_data, args);
     return;
   }
 
   if (argument_count == 1 && !strcmp(command, binary_type_str(BT_DEL))) {
     struct BoundedData *key =
         bounded_data_create_from_buffer(first_arg, strlen(first_arg));
-    handle_del(event_data, args->hashtable, key);
+    handle_del(event_data, args, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
     // `key` pointer now, but first we have to clear `key->data`, and the
@@ -140,7 +140,7 @@ static void parse_text_request(struct WorkerArgs *args,
   if (argument_count == 1 && !strcmp(command, binary_type_str(BT_GET))) {
     struct BoundedData *key =
         bounded_data_create_from_buffer(first_arg, strlen(first_arg));
-    handle_get(event_data, args->hashtable, key);
+    handle_get(event_data, args, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
     // `key` pointer now, but first we have to clear `key->data`, and the
@@ -154,7 +154,7 @@ static void parse_text_request(struct WorkerArgs *args,
   if (argument_count == 1 && !strcmp(command, binary_type_str(BT_TAKE))) {
     struct BoundedData *key =
         bounded_data_create_from_buffer(first_arg, strlen(first_arg));
-    handle_take(event_data, args->hashtable, key);
+    handle_take(event_data, args, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
     // `key` pointer now, but first we have to clear `key->data`, and the
@@ -177,7 +177,7 @@ static void parse_text_request(struct WorkerArgs *args,
         bounded_data_create_from_buffer_duplicate(first_arg, key_len);
     struct BoundedData *value =
         bounded_data_create_from_buffer_duplicate(second_arg, value_len);
-    handle_put(event_data, args->hashtable, key, value);
+    handle_put(event_data, args, key, value);
     return;
   }
 }
