@@ -94,4 +94,12 @@ void hashtable_destroy(struct HashTable *hashtable);
 // Returns the number of keys stored in the hash table.
 uint64_t hashtable_key_count(struct HashTable *hashtable);
 
+// Calls malloc_evict with the hashtable lock taken.
+void *hashtable_malloc_evict(struct HashTable *hashtable, size_t size);
+
+// Calls malloc_evict_bounded_data with the hashtable lock taken.
+struct BoundedData *
+hashtable_malloc_evict_bounded_data(struct HashTable *hashtable,
+                                    size_t buffer_size);
+
 #endif

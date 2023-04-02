@@ -493,3 +493,21 @@ malloc_evict_bounded_data(struct HashTable *hashtable, size_t buffer_size) {
 
   return bounded_data;
 }
+
+// Calls malloc_evict with the hashtable lock taken.
+void *hashtable_malloc_evict(struct HashTable *hashtable, size_t size) {
+  pthread_mutex_lock(hashtable->mutex);
+  void *ptr = malloc_evict(hashtable, size);
+  pthread_mutex_unlock(hashtable->mutex);
+  return ptr;
+}
+
+// Calls malloc_evict_bounded_data with the hashtable lock taken.
+struct BoundedData *
+hashtable_malloc_evict_bounded_data(struct HashTable *hashtable,
+                                    size_t buffer_size) {
+  pthread_mutex_lock(hashtable->mutex);
+  void *ptr = malloc_evict_bounded_data(hashtable, buffer_size);
+  pthread_mutex_unlock(hashtable->mutex);
+  return ptr;
+}
