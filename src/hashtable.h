@@ -3,7 +3,9 @@
 
 #include <stdint.h>
 
+#include "bounded_data.h"
 #include "bucket.h"
+#include "dlink.h"
 
 // Hash function for the hash table. Returns the hash of a key of the hash
 // table.
@@ -34,23 +36,14 @@ struct HashTable {
   uint64_t num_buckets;
   struct BucketNode **buckets;
   HashTableHashFunction hash;
-  HashTableKeyEqualsFunction key_equals;
-  HashTableCopyValueFunction copy_value;
-  HashTableDestroyFunction destroy_key;
-  HashTableDestroyFunction destroy_value;
   pthread_mutex_t *mutex;
   uint64_t key_count;
+  struct Dlink *usage_queue;
 };
 
-// Allocates memory for a hash table (including all its buckets), stores the
-// callbacks that should be used to manipulate the keys and values and returns a
-// pointer to it.
-struct HashTable *hashtable_create(uint64_t num_buckets,
-                                   HashTableHashFunction hash,
-                                   HashTableKeyEqualsFunction key_equals,
-                                   HashTableCopyValueFunction copy_value,
-                                   HashTableDestroyFunction destroy_key,
-                                   HashTableDestroyFunction destroy_value);
+// Allocates memory for a hash table (including all its buckets, the mutex and
+// the usage queue) and stores the callback for the hash function.
+struct HashTable *hashtable_create(uint64_t num_buckets);
 
 // Inserts the given key and value into the hash table.
 //////////////////////////////////////
@@ -59,7 +52,8 @@ struct HashTable *hashtable_create(uint64_t num_buckets,
 // If the key does already exist in the hash table, the function returns
 // HT_FOUND, the given key pointer becomes owned by the hash table, the old key
 // pointer is destroyed (!!) and the old value pointer is destroyed (!!).
-int hashtable_insert(struct HashTable *hashtable, void *key, void *value);
+int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
+                     struct BoundedData *value);
 
 // Attempts to retrieve a *copy* of the value associated to the given key in the
 // hash table.
@@ -70,7 +64,8 @@ int hashtable_insert(struct HashTable *hashtable, void *key, void *value);
 // value pointer is modified so that it holds a pointer to a copy of the value
 // associated to the given key in the hash table. The pointer of the given key
 // is owned by the client.
-int hashtable_get(struct HashTable *hashtable, void *key, void **value);
+int hashtable_get(struct HashTable *hashtable, struct BoundedData *key,
+                  struct BoundedData **value);
 
 // Attempts to remove the given key and its associated value from the hash
 // table and "returns" a pointer to a copy of the removed value.
@@ -81,7 +76,8 @@ int hashtable_get(struct HashTable *hashtable, void *key, void **value);
 // value pointer is modified so that it holds a pointer to the value associated
 // to the given key in the hash table and the key pointer in the hash table is
 // destroyed (!!).
-int hashtable_take(struct HashTable *hashtable, void *key, void **value);
+int hashtable_take(struct HashTable *hashtable, struct BoundedData *key,
+                   struct BoundedData **value);
 
 // Attempts to remove the given key and its associated value from the hash
 // table and get a pointer to a copy of the removed value.
@@ -90,17 +86,22 @@ int hashtable_take(struct HashTable *hashtable, void *key, void **value);
 // HT_NOTFOUND. If the key does already exist in the hash table, the function
 // returns HT_FOUND, the key pointer in the hash table is destroyed (!!) and the
 // value pointer in the hash table is destroyed (!!).
-int hashtable_remove(struct HashTable *hashtable, void *key);
+int hashtable_remove(struct HashTable *hashtable, struct BoundedData *key);
 
 // Prints the given hashtable to standard output.
-void hashtable_print(struct HashTable *hashtable,
-                     HashTablePrintFunction print_key,
-                     HashTablePrintFunction print_value);
+void hashtable_print(struct HashTable *hashtable);
+
+// Prints the usage queue of the given hashtable to standard output.
+void hashtable_print_usage_queue(struct HashTable *hashtable);
 
 // De-allocates memory for the hash table and all its keys and values.
 void hashtable_destroy(struct HashTable *hashtable);
 
 // Returns the number of keys stored in the hash table.
 uint64_t hashtable_key_count(struct HashTable *hashtable);
+
+// devuelve HT_NOTFOUND si no puede encontrar un miembro para borrar. devuelve
+// HT_NOTFOUND si pudimos expulsar un par clave valor de la tabla.
+int hashtable_evict_lru(struct HashTable *hashtable);
 
 #endif

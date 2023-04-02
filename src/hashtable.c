@@ -3,15 +3,9 @@
 
 #include "hashtable.h"
 
-// Allocates memory for a hash table (including all its buckets), stores the
-// callbacks that should be used to manipulate the keys and values and returns a
-// pointer to it.
-struct HashTable *hashtable_create(uint64_t num_buckets,
-                                   HashTableHashFunction hash,
-                                   HashTableKeyEqualsFunction key_equals,
-                                   HashTableCopyValueFunction copy_value,
-                                   HashTableDestroyFunction destroy_key,
-                                   HashTableDestroyFunction destroy_value) {
+// Allocates memory for a hash table (including all its buckets, the mutex and
+// the usage queue) and stores the callback for the hash function.
+struct HashTable *hashtable_create(uint64_t num_buckets) {
   // Allocate memory for the hash table.
   struct HashTable *hashtable = malloc(sizeof(struct HashTable));
   if (hashtable == NULL) {
@@ -39,14 +33,12 @@ struct HashTable *hashtable_create(uint64_t num_buckets,
   }
   pthread_mutex_init(hashtable->mutex, NULL);
 
-  // Set up the callbacks for the hash table operation.
-  hashtable->hash = hash;
-  hashtable->key_equals = key_equals;
-  hashtable->copy_value = copy_value;
-  hashtable->destroy_key = destroy_key;
-  hashtable->destroy_value = destroy_value;
+  hashtable->usage_queue = dlink_create();
+  if (hashtable->usage_queue == NULL) {
+    perror("hashtable_create malloc4");
+    abort();
+  }
 
-  // Initialize the keys counter.
   hashtable->key_count = 0;
 
   return hashtable;
@@ -54,9 +46,18 @@ struct HashTable *hashtable_create(uint64_t num_buckets,
 
 // Returns the bucket index in the hash table for the given key.
 static uint64_t hashtable_get_bucket_index(struct HashTable *hashtable,
-                                           void *key) {
-  uint64_t key_hash = hashtable->hash(key);
+                                           struct BoundedData *key) {
+  uint64_t key_hash = bounded_data_hash(key);
   return key_hash % hashtable->num_buckets;
+}
+
+static void hashtable_set_most_used(struct HashTable *hashtable,
+                                    struct BucketNode *node) {
+  // Sets the given bucket node as the most used of the hash table.
+  hashtable_print_usage_queue(hashtable);
+  struct Dlink_Node *usage_node = dlink_node_remove(node->usage_node);
+  dlink_insert_first(hashtable->usage_queue, usage_node);
+  hashtable_print_usage_queue(hashtable);
 }
 
 // Inserts the given key and value into the hash table.
@@ -66,7 +67,8 @@ static uint64_t hashtable_get_bucket_index(struct HashTable *hashtable,
 // If the key does already exist in the hash table, the function returns
 // HT_FOUND, the given key pointer becomes owned by the hash table, the old key
 // pointer is destroyed (!!) and the old value pointer is destroyed (!!).
-int hashtable_insert(struct HashTable *hashtable, void *key, void *value) {
+int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
+                     struct BoundedData *value) {
   // Determine the bucket index for the key.
   uint64_t bucket_index = hashtable_get_bucket_index(hashtable, key);
   struct BucketNode *previous_node = NULL;
@@ -76,16 +78,17 @@ int hashtable_insert(struct HashTable *hashtable, void *key, void *value) {
 
   // Look for the key in the bucket.
   while (current_node != NULL) {
-    if (hashtable->key_equals(current_node->key, key)) {
+    if (bounded_data_equals(current_node->key, key)) {
       // Found it!
-      // Replace the old value with the new one and free the old value.
-      void *old_value = current_node->value;
+      // Free the old value and replace it with the new one.
+      bounded_data_destroy(current_node->value);
       current_node->value = value;
-      hashtable->destroy_value(old_value);
 
       // Delete the new key since the old one is already assigned and is the
       // same.
-      hashtable->destroy_key(key);
+      bounded_data_destroy(key);
+
+      hashtable_set_most_used(hashtable, current_node);
 
       // Return HT_FOUND to signal that the key was found when inserting.
       pthread_mutex_unlock(hashtable->mutex);
@@ -99,6 +102,11 @@ int hashtable_insert(struct HashTable *hashtable, void *key, void *value) {
 
   // Didn't find the key. Add it to the bucket.
   struct BucketNode *new_node = bucket_node_create(key, value);
+
+  // Create and set the new node as the most recently used one.
+  struct Dlink_Node *new_usage_node = dlink_node_create(new_node);
+  new_node->usage_node = new_usage_node;
+  dlink_insert_first(hashtable->usage_queue, new_usage_node);
   if (previous_node == NULL) {
     hashtable->buckets[bucket_index] = new_node;
   } else {
@@ -122,7 +130,8 @@ int hashtable_insert(struct HashTable *hashtable, void *key, void *value) {
 // value pointer is modified so that it holds a pointer to a copy of the value
 // associated to the given key in the hash table. The pointer of the given key
 // is owned by the client.
-int hashtable_get(struct HashTable *hashtable, void *key, void **value) {
+int hashtable_get(struct HashTable *hashtable, struct BoundedData *key,
+                  struct BoundedData **value) {
   // Determine the bucket index for the key.
   uint64_t bucket_index = hashtable_get_bucket_index(hashtable, key);
 
@@ -131,10 +140,12 @@ int hashtable_get(struct HashTable *hashtable, void *key, void **value) {
 
   // Look for the key in the bucket.
   while (current_node != NULL) {
-    if (hashtable->key_equals(current_node->key, key)) {
+    if (bounded_data_equals(current_node->key, key)) {
       // Found it!
       // Get a copy of the value and "return" a pointer to it.
-      *value = hashtable->copy_value(current_node->value);
+      *value = bounded_data_duplicate(current_node->value);
+
+      hashtable_set_most_used(hashtable, current_node);
 
       // Return HT_FOUND to signal that the key was found when retrieving.
       pthread_mutex_unlock(hashtable->mutex);
@@ -159,7 +170,8 @@ int hashtable_get(struct HashTable *hashtable, void *key, void **value) {
 // value pointer is modified so that it holds a pointer to the value associated
 // to the given key in the hash table and the key pointer in the hash table is
 // destroyed (!!).
-int hashtable_take(struct HashTable *hashtable, void *key, void **value) {
+int hashtable_take(struct HashTable *hashtable, struct BoundedData *key,
+                   struct BoundedData **value) {
   // Determine the bucket index for the key.
   uint64_t bucket_index = hashtable_get_bucket_index(hashtable, key);
   struct BucketNode *previous_node = NULL;
@@ -169,7 +181,7 @@ int hashtable_take(struct HashTable *hashtable, void *key, void **value) {
 
   while (current_node != NULL) {
     // Look for the key in the bucket.
-    if (hashtable->key_equals(current_node->key, key)) {
+    if (bounded_data_equals(current_node->key, key)) {
       // Found it!
       // "Return" a pointer to the actual value and "remove" it from the bucket
       // node.
@@ -177,7 +189,7 @@ int hashtable_take(struct HashTable *hashtable, void *key, void **value) {
       current_node->value = NULL; // Just in case.
 
       // Destroy the pointer to the key.
-      hashtable->destroy_key(current_node->key);
+      bounded_data_destroy(current_node->key);
       current_node->key = NULL; // Just in case.
 
       // Remove the node from the bucket
@@ -188,6 +200,9 @@ int hashtable_take(struct HashTable *hashtable, void *key, void **value) {
         // The key-value pair is not stored in the first node of the bucket.
         previous_node->next = current_node->next;
       }
+
+      // Destroy the usage node for the current bucket node.
+      dlink_node_destroy(current_node->usage_node);
 
       // Destroy the bucket node of the key-value pair.
       bucket_node_destroy(current_node);
@@ -217,47 +232,58 @@ int hashtable_take(struct HashTable *hashtable, void *key, void **value) {
 // HT_NOTFOUND. If the key does already exist in the hash table, the function
 // returns HT_FOUND, the key pointer in the hash table is destroyed (!!) and the
 // value pointer in the hash table is destroyed (!!).
-int hashtable_remove(struct HashTable *hashtable, void *key) {
-  void *removed_value = NULL;
+int hashtable_remove(struct HashTable *hashtable, struct BoundedData *key) {
+  struct BoundedData *removed_value = NULL;
   int ret = hashtable_take(hashtable, key, &removed_value);
   if (ret == HT_FOUND) {
     // Destroy the value since we don't need it.
-    hashtable->destroy_value(removed_value);
+    bounded_data_destroy(removed_value);
   }
   return ret;
 }
 
 // Recursively prints a bucket node of a hash table.
 static void hashtable_print_bucket_nodes(struct HashTable *hashtable,
-                                         struct BucketNode *bucket_node,
-                                         void (*print_key)(void *),
-                                         void (*print_value)(void *)) {
+                                         struct BucketNode *bucket_node) {
   if (bucket_node == NULL) {
     printf("-> X\n");
     return;
   }
 
   printf("-> (");
-  print_key(bucket_node->key);
+  bounded_data_print(bucket_node->key);
   printf(":");
-  print_value(bucket_node->value);
+  bounded_data_print(bucket_node->value);
   printf(") ");
 
-  hashtable_print_bucket_nodes(hashtable, bucket_node->next, print_key,
-                               print_value);
+  hashtable_print_bucket_nodes(hashtable, bucket_node->next);
 }
 
-// Prints the given hasht able to standard output.
-void hashtable_print(struct HashTable *hashtable,
-                     HashTablePrintFunction print_key,
-                     HashTablePrintFunction print_value) {
+// Prints the given hashtable to standard output.
+void hashtable_print(struct HashTable *hashtable) {
   printf("=====================\n");
   for (int i = 0; i < hashtable->num_buckets; i++) {
     printf("%03d | ", i);
-    hashtable_print_bucket_nodes(hashtable, hashtable->buckets[i], print_key,
-                                 print_value);
+    hashtable_print_bucket_nodes(hashtable, hashtable->buckets[i]);
   }
   printf("=====================\n");
+}
+
+// Prints the usage queue of the given hashtable to standard output.
+void hashtable_print_usage_queue(struct HashTable *hashtable) {
+  printf("Least used | ");
+
+  struct Dlink_Node *current_node = hashtable->usage_queue->last;
+  while (current_node != NULL) {
+    struct BucketNode *bucket_node = current_node->data;
+    printf("[");
+    bounded_data_print(bucket_node->key);
+    printf("] -> ");
+
+    current_node = current_node->previous;
+  }
+
+  printf("| Most used\n");
 }
 
 // De-allocates the memory for all the nodes in the bucket and the bucket
@@ -270,8 +296,9 @@ static void hashtable_destroy_bucket(struct HashTable *hashtable,
   while (current_node != NULL) {
     struct BucketNode *node_to_destroy = current_node;
     current_node = current_node->next;
-    hashtable->destroy_key(node_to_destroy->key);
-    hashtable->destroy_value(node_to_destroy->value);
+    bounded_data_destroy(node_to_destroy->key);
+    bounded_data_destroy(node_to_destroy->value);
+    dlink_node_destroy(node_to_destroy->usage_node);
     bucket_node_destroy(node_to_destroy);
   }
 }
@@ -296,4 +323,32 @@ void hashtable_destroy(struct HashTable *hashtable) {
 // Returns the number of keys stored in the hash table.
 uint64_t hashtable_key_count(struct HashTable *hashtable) {
   return hashtable->key_count;
+}
+
+// devuelve HT_NOTFOUND si no puede encontrar un miembro para borrar. devuelve
+// HT_NOTFOUND si pudimos expulsar un par clave valor de la tabla.
+int hashtable_evict_lru(struct HashTable *hashtable) {
+
+  pthread_mutex_lock(hashtable->mutex);
+
+  struct Dlink_Node *dlink_node = dlink_remove_last(hashtable->usage_queue);
+  if (dlink_node == NULL) {
+    printf("Oh shit man we don't have any more items in the usage queue.\n");
+    pthread_mutex_unlock(hashtable->mutex);
+    return HT_NOTFOUND;
+  }
+
+  struct BucketNode *victim_bucket_node = dlink_node->data;
+  bounded_data_destroy(victim_bucket_node->key);
+  bounded_data_destroy(victim_bucket_node->value);
+  if (victim_bucket_node->usage_node != dlink_node) {
+    printf("Oh shit, the nodes aren't matching.\n");
+  }
+  dlink_node_destroy(dlink_node);
+  bucket_node_destroy(victim_bucket_node);
+
+  hashtable->key_count--;
+
+  pthread_mutex_unlock(hashtable->mutex);
+  return HT_FOUND;
 }

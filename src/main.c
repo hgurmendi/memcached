@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <sys/sysinfo.h>
 
-#include "bounded_data_hashtable.h"
 #include "epoll.h"
+#include "hashtable.h"
 #include "parameters.h"
 #include "sockets.h"
 #include "worker_state.h"
@@ -40,7 +40,7 @@ void start_server(char *text_port, char *binary_port) {
   int epoll_fd = epoll_initialize(text_fd, binary_fd);
 
   // Create and initialize the hash table.
-  struct HashTable *hashtable = bd_hashtable_create(HASH_TABLE_BUCKETS_SIZE);
+  struct HashTable *hashtable = hashtable_create(HASH_TABLE_BUCKETS_SIZE);
 
   // Create the array of thread ids.
   pthread_t *thread_ids = malloc(sizeof(pthread_t) * num_workers);
@@ -74,6 +74,7 @@ void start_server(char *text_port, char *binary_port) {
     worker_args[i].thread_ids = thread_ids;
     worker_args[i].hashtable = hashtable;
     worker_args[i].workers_stats = workers_stats;
+    worker_stats_initialize(&workers_stats[i]);
 
     if (i == 0) {
       // The first worker id belongs to the main thread.

@@ -5,10 +5,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "dlink_node.h"
+
 struct BucketNode {
   struct BucketNode *next;
   void *key;
   void *value;
+  struct Dlink_Node *usage_node;
 };
 
 // Allocates memory for a bucket node, stores the given key and value in it and

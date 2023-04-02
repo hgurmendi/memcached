@@ -53,4 +53,8 @@ void bounded_data_print(struct BoundedData *bounded_data);
 // text, false otherwise.
 bool bounded_data_is_text_representable(struct BoundedData *bounded_data);
 
+// Returns the 64-bit FNV-1a hash for the given data.
+// More information: https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
+uint64_t bounded_data_hash(struct BoundedData *bounded_data);
+
 #endif

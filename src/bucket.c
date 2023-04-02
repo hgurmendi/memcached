@@ -16,6 +16,7 @@ struct BucketNode *bucket_node_create(void *key, void *value) {
   node->key = key;
   node->value = value;
   node->next = NULL;
+  node->usage_node = NULL;
 
   return node;
 }

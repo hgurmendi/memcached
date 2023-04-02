@@ -3,7 +3,7 @@
 
 #include <pthread.h>
 
-#include "bounded_data_hashtable.h"
+#include "hashtable.h"
 
 struct WorkerStats {
   uint64_t put_count;   // Number of PUT requests.
