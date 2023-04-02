@@ -1,6 +1,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/resource.h>
 #include <sys/sysinfo.h>
 #include <unistd.h> // for setuid
 
@@ -50,7 +51,28 @@ void drop_privileges() {
   print_gid_uid();
 }
 
+void set_memory_limit() {
+  struct rlimit memory_limits;
+
+  int rv = getrlimit(RLIMIT_DATA, &memory_limits);
+  if (rv != 0) {
+    perror("set_memory_limit getrlimit");
+    abort();
+  }
+
+  memory_limits.rlim_cur = MEMORY_LIMIT;
+  rv = setrlimit(RLIMIT_DATA, &memory_limits);
+  if (rv != 0) {
+    perror("set_memory_limit setrlimit");
+    abort();
+  }
+
+  printf("Memory limit correctly set to %ld bytes\n", MEMORY_LIMIT);
+}
+
 void start_server(char *text_port, char *binary_port) {
+  set_memory_limit();
+
   // We'll use as many workers as processors in the computer.
   int num_workers = get_nprocs();
 
