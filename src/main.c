@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/sysinfo.h>
+#include <unistd.h> // for setuid
 
 #include "epoll.h"
 #include "hashtable.h"
@@ -28,6 +29,27 @@ int main(int argc, char *argv[]) {
   return EXIT_SUCCESS;
 }
 
+void print_gid_uid() {
+  gid_t gid = getgid();
+  uid_t uid = getuid();
+
+  printf("Current uid=%d gid=%d\n", uid, gid);
+}
+
+void drop_privileges() {
+  print_gid_uid();
+
+  if (setgid(2) == -1) {
+    printf("Error changing group id\n");
+  }
+  if (setuid(2) == -1) {
+    printf("Error changing user id\n");
+  }
+
+  printf("Privileges successfully dropped!\n");
+  print_gid_uid();
+}
+
 void start_server(char *text_port, char *binary_port) {
   // We'll use as many workers as processors in the computer.
   int num_workers = get_nprocs();
@@ -38,6 +60,9 @@ void start_server(char *text_port, char *binary_port) {
   int binary_fd = create_listen_socket(binary_port);
   // Create epoll instance file descriptor.
   int epoll_fd = epoll_initialize(text_fd, binary_fd);
+
+  // Drop privileges after setting up the listening ports.
+  drop_privileges();
 
   // Create and initialize the hash table.
   struct HashTable *hashtable = hashtable_create(HASH_TABLE_BUCKETS_SIZE);
