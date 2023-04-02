@@ -170,8 +170,8 @@ int handle_binary_client_request(struct WorkerArgs *args,
     event_data->arg1 = hashtable_malloc_evict_bounded_data(
         args->hashtable, event_data->arg_size);
     if (event_data->arg1 == NULL) {
-      // Respond with BT_EUNK if the request can't be handled due to lack of
-      // memory.
+      // Respond with BT_EUNK if the request can't be properly fulfilled due to
+      // lack of memory.
       event_data->response_type = BT_EUNK;
       event_data->client_state = BINARY_WRITING_COMMAND;
     } else {
@@ -241,8 +241,8 @@ int handle_binary_client_request(struct WorkerArgs *args,
     event_data->arg2 = hashtable_malloc_evict_bounded_data(
         args->hashtable, event_data->arg_size);
     if (event_data->arg2 == NULL) {
-      // Respond with BT_EUNK if the request can't be handled due to lack of
-      // memory.
+      // Respond with BT_EUNK if the request can't be properly fulfilled due to
+      // lack of memory.
       event_data->response_type = BT_EUNK;
       event_data->client_state = BINARY_WRITING_COMMAND;
     } else {

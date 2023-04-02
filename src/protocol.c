@@ -118,11 +118,16 @@ void handle_stats(struct EventData *event_data, struct WorkerArgs *args) {
                aggregated_stats.get_count, aggregated_stats.take_count,
                aggregated_stats.stats_count, num_keys);
 
-  event_data->response_type = BT_OK;
-  // The response content doesn't include the trailing '\0'.
-  // TODOMEM
   event_data->response_content =
-      bounded_data_create_from_buffer_duplicate(stats_content, bytes_written);
+      hashtable_malloc_evict_bounded_data(args->hashtable, bytes_written);
+  if (event_data->response_content == NULL) {
+    // Respond with BT_EUNK if the request can't be properly fulfilled due to
+    // lack of memory.
+    event_data->response_type = BT_EUNK;
+  } else {
+    event_data->response_type = BT_OK;
+  }
+
   args->workers_stats[args->worker_id].stats_count++;
 
   // TODO REMOVE
