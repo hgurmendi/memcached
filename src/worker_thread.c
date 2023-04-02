@@ -32,7 +32,7 @@ static void accept_connections(struct WorkerArgs *args, int incoming_fd) {
     client_fd = accept(incoming_fd, &incoming_addr, &incoming_addr_len);
     if (client_fd == -1) {
       if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-        // See `man 2 accept`: itt means that the socket is marked nonblocking
+        // See `man 2 accept`: it means that the socket is marked nonblocking
         // and no connections are present to be accepted. So, we processed all
         // incoming connection requests and we're done.
         return;
@@ -44,10 +44,16 @@ static void accept_connections(struct WorkerArgs *args, int incoming_fd) {
     }
 
     // Allocate memory for the event data that we'll store in the epoll
-    // instance.
-    // TODOMEM
-    struct EventData *event_data = event_data_create(
-        client_fd, incoming_fd == args->binary_fd ? BINARY : TEXT);
+    // instance and initialize it.
+    struct EventData *event_data =
+        hashtable_malloc_evict(args->hashtable, sizeof(struct EventData));
+    if (event_data == NULL) {
+      printf("Couldn't accept incoming connection because we ran out of "
+             "memory...\n");
+      return;
+    }
+    event_data_initialize(event_data, client_fd,
+                          incoming_fd == args->binary_fd ? BINARY : TEXT);
 
     // Get the IP address and port of the client and store it in the struct.
     status = getnameinfo(&incoming_addr, incoming_addr_len, event_data->host,

@@ -53,7 +53,12 @@ struct EventData {
 
 #define MAX_EPOLL_EVENTS 128
 
-// Allocates memory for an EventData struct with some initial data.
+// Initializes an EventData struct.
+void event_data_initialize(struct EventData *event_data, int fd,
+                           enum ConnectionType connection_type_str);
+
+// Allocates memory for an EventData struct and initializes it with minimal
+// data.
 struct EventData *event_data_create(int fd,
                                     enum ConnectionType connection_type);
 
