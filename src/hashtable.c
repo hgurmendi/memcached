@@ -3,6 +3,32 @@
 
 #include "hashtable.h"
 
+// Allocates memory for a bucket node, stores the given key and value in it and
+// returns a pointer to the bucket node struct.
+static struct BucketNode *bucket_node_create(struct BoundedData *key,
+                                             struct BoundedData *value) {
+  // Allocate memory for the bucket node.
+  struct BucketNode *node = malloc(sizeof(struct BucketNode));
+  if (node == NULL) {
+    perror("bucket_node_create malloc");
+    abort();
+  }
+
+  node->key = key;
+  node->value = value;
+  node->next = NULL;
+  node->usage_node = NULL;
+
+  return node;
+}
+
+// Frees the memory allocated for a bucket node. The key and value stored in the
+// node should have been freed already.
+static void bucket_node_destroy(struct BucketNode *node) {
+  // We assume that the key and value members were already freed.
+  free(node);
+}
+
 // Allocates memory for a hash table (including all its buckets, the mutex and
 // the usage queue) and stores the callback for the hash function.
 struct HashTable *hashtable_create(uint64_t num_buckets) {
@@ -33,11 +59,8 @@ struct HashTable *hashtable_create(uint64_t num_buckets) {
   }
   pthread_mutex_init(hashtable->mutex, NULL);
 
-  hashtable->usage_queue = dlink_create();
-  if (hashtable->usage_queue == NULL) {
-    perror("hashtable_create malloc4");
-    abort();
-  }
+  hashtable->most_used = NULL;
+  hashtable->least_used = NULL;
 
   hashtable->key_count = 0;
 
@@ -51,13 +74,67 @@ static uint64_t hashtable_get_bucket_index(struct HashTable *hashtable,
   return key_hash % hashtable->num_buckets;
 }
 
-static void hashtable_set_most_used(struct HashTable *hashtable,
-                                    struct BucketNode *node) {
-  // Sets the given bucket node as the most used of the hash table.
-  hashtable_print_usage_queue(hashtable);
-  struct Dlink_Node *usage_node = dlink_node_remove(node->usage_node);
-  dlink_insert_first(hashtable->usage_queue, usage_node);
-  hashtable_print_usage_queue(hashtable);
+// Allocates memory for a new, unlinked and empty usage node and returns a
+// pointer to it. Returns NULL if it couldn't be allocated.
+static struct UsageNode *usage_node_create() {
+  struct UsageNode *new_usage_node = malloc(sizeof(struct UsageNode));
+  if (new_usage_node == NULL) {
+    perror("usage_node_create malloc");
+    return NULL;
+  }
+
+  new_usage_node->less_used = NULL;
+  new_usage_node->more_used = NULL;
+  new_usage_node->bucket_node = NULL;
+
+  return new_usage_node;
+}
+
+// Frees the memory of an existing usage node.
+static void usage_node_destroy(struct UsageNode *usage_node) {
+  free(usage_node);
+}
+
+// Given a usage node that is not in the usage queue, add it as the most used
+// node.
+static void
+hashtable_insert_as_most_used_usage_node(struct HashTable *hashtable,
+                                         struct UsageNode *usage_node) {
+  usage_node->more_used = NULL;
+  usage_node->less_used = hashtable->most_used;
+  if (hashtable->most_used == NULL) {
+    hashtable->least_used = usage_node;
+  } else {
+    hashtable->most_used->more_used = usage_node;
+  }
+  hashtable->most_used = usage_node;
+}
+
+// Given a usage node that is in the usage queue, unlink it from the queue.
+static void hashtable_remove_usage_node(struct HashTable *hashtable,
+                                        struct UsageNode *usage_node) {
+  struct UsageNode *less = usage_node->less_used;
+  struct UsageNode *more = usage_node->more_used;
+
+  if (less != NULL) {
+    less->more_used = more;
+    usage_node->less_used = NULL;
+  }
+
+  if (more != NULL) {
+    more->less_used = less;
+    usage_node->more_used = NULL;
+  }
+
+  if (less == NULL) {
+    // we removed the least used element.
+    hashtable->least_used = more;
+  }
+
+  if (more == NULL) {
+    // we removed the most used element.
+    hashtable->most_used = less;
+  }
 }
 
 // Inserts the given key and value into the hash table.
@@ -88,7 +165,10 @@ int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
       // same.
       bounded_data_destroy(key);
 
-      hashtable_set_most_used(hashtable, current_node);
+      // Set as the most used.
+      hashtable_remove_usage_node(hashtable, current_node->usage_node);
+      hashtable_insert_as_most_used_usage_node(hashtable,
+                                               current_node->usage_node);
 
       // Return HT_FOUND to signal that the key was found when inserting.
       pthread_mutex_unlock(hashtable->mutex);
@@ -104,9 +184,10 @@ int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
   struct BucketNode *new_node = bucket_node_create(key, value);
 
   // Create and set the new node as the most recently used one.
-  struct Dlink_Node *new_usage_node = dlink_node_create(new_node);
+  struct UsageNode *new_usage_node = usage_node_create();
+  new_usage_node->bucket_node = new_node;
   new_node->usage_node = new_usage_node;
-  dlink_insert_first(hashtable->usage_queue, new_usage_node);
+  hashtable_insert_as_most_used_usage_node(hashtable, new_usage_node);
   if (previous_node == NULL) {
     hashtable->buckets[bucket_index] = new_node;
   } else {
@@ -145,7 +226,10 @@ int hashtable_get(struct HashTable *hashtable, struct BoundedData *key,
       // Get a copy of the value and "return" a pointer to it.
       *value = bounded_data_duplicate(current_node->value);
 
-      hashtable_set_most_used(hashtable, current_node);
+      // Set as the most used.
+      hashtable_remove_usage_node(hashtable, current_node->usage_node);
+      hashtable_insert_as_most_used_usage_node(hashtable,
+                                               current_node->usage_node);
 
       // Return HT_FOUND to signal that the key was found when retrieving.
       pthread_mutex_unlock(hashtable->mutex);
@@ -183,6 +267,11 @@ int hashtable_take(struct HashTable *hashtable, struct BoundedData *key,
     // Look for the key in the bucket.
     if (bounded_data_equals(current_node->key, key)) {
       // Found it!
+
+      // Remove and destroy the usage node for the current bucket node.
+      hashtable_remove_usage_node(hashtable, current_node->usage_node);
+      usage_node_destroy(current_node->usage_node);
+
       // "Return" a pointer to the actual value and "remove" it from the bucket
       // node.
       *value = current_node->value;
@@ -200,9 +289,6 @@ int hashtable_take(struct HashTable *hashtable, struct BoundedData *key,
         // The key-value pair is not stored in the first node of the bucket.
         previous_node->next = current_node->next;
       }
-
-      // Destroy the usage node for the current bucket node.
-      dlink_node_destroy(current_node->usage_node);
 
       // Destroy the bucket node of the key-value pair.
       bucket_node_destroy(current_node);
@@ -273,14 +359,12 @@ void hashtable_print(struct HashTable *hashtable) {
 void hashtable_print_usage_queue(struct HashTable *hashtable) {
   printf("Least used | ");
 
-  struct Dlink_Node *current_node = hashtable->usage_queue->last;
-  while (current_node != NULL) {
-    struct BucketNode *bucket_node = current_node->data;
+  struct UsageNode *current = hashtable->least_used;
+  while (current != NULL) {
     printf("[");
-    bounded_data_print(bucket_node->key);
-    printf("] -> ");
-
-    current_node = current_node->previous;
+    bounded_data_print(current->bucket_node->key);
+    printf("] ");
+    current = current->more_used;
   }
 
   printf("| Most used\n");
@@ -298,7 +382,7 @@ static void hashtable_destroy_bucket(struct HashTable *hashtable,
     current_node = current_node->next;
     bounded_data_destroy(node_to_destroy->key);
     bounded_data_destroy(node_to_destroy->value);
-    dlink_node_destroy(node_to_destroy->usage_node);
+    usage_node_destroy(node_to_destroy->usage_node);
     bucket_node_destroy(node_to_destroy);
   }
 }
@@ -325,26 +409,41 @@ uint64_t hashtable_key_count(struct HashTable *hashtable) {
   return hashtable->key_count;
 }
 
-// devuelve HT_NOTFOUND si no puede encontrar un miembro para borrar. devuelve
-// HT_NOTFOUND si pudimos expulsar un par clave valor de la tabla.
+// Evicts the least recently used entry from the hashtable. If there are no
+// entries in the cache then we return HT_NOTFOUND. Otherwise, we evict the
+// least recently used one and return HT_FOUND.
 int hashtable_evict_lru(struct HashTable *hashtable) {
 
   pthread_mutex_lock(hashtable->mutex);
 
-  struct Dlink_Node *dlink_node = dlink_remove_last(hashtable->usage_queue);
-  if (dlink_node == NULL) {
-    printf("Oh shit man we don't have any more items in the usage queue.\n");
+  struct UsageNode *least_used = hashtable->least_used;
+  if (least_used == NULL) {
     pthread_mutex_unlock(hashtable->mutex);
     return HT_NOTFOUND;
   }
 
-  struct BucketNode *victim_bucket_node = dlink_node->data;
+  uint64_t bucket_index =
+      hashtable_get_bucket_index(hashtable, least_used->bucket_node->key);
+  struct BucketNode *victim_bucket_node = least_used->bucket_node;
+
+  // Unlink the victim bucket node from the hashtable's bucket.
+  struct BucketNode *current_bucket_node = hashtable->buckets[bucket_index];
+  if (current_bucket_node == victim_bucket_node) {
+    // It's the first one.
+    hashtable->buckets[bucket_index] = victim_bucket_node->next;
+  } else {
+    // It's not the first one.
+    struct BucketNode *previous = current_bucket_node;
+    while (previous->next != victim_bucket_node) {
+      previous = previous->next;
+    }
+    previous->next = victim_bucket_node->next;
+  }
+
+  hashtable_remove_usage_node(hashtable, least_used);
   bounded_data_destroy(victim_bucket_node->key);
   bounded_data_destroy(victim_bucket_node->value);
-  if (victim_bucket_node->usage_node != dlink_node) {
-    printf("Oh shit, the nodes aren't matching.\n");
-  }
-  dlink_node_destroy(dlink_node);
+  usage_node_destroy(least_used);
   bucket_node_destroy(victim_bucket_node);
 
   hashtable->key_count--;

@@ -1,44 +1,35 @@
 #ifndef __HASHTABLE_H__
 #define __HASHTABLE_H__
 
+#include <pthread.h>
 #include <stdint.h>
 
 #include "bounded_data.h"
-#include "bucket.h"
-#include "dlink.h"
-
-// Hash function for the hash table. Returns the hash of a key of the hash
-// table.
-typedef uint64_t (*HashTableHashFunction)(void *);
-
-// Key comparison function for the hash table. Returns `true` if both keys are
-// considered equal, `false` otherwise.
-typedef bool (*HashTableKeyEqualsFunction)(void *, void *);
-
-// Value copy function for the hash table. Allocates memory for a copy of a
-// value already present in the hash table and returns a pointer to it. It's
-// responsibility of the caller to free this memory.
-typedef void *(*HashTableCopyValueFunction)(void *);
-
-// Destroy function for the hash table. Destroys the memory allocated for a key
-// that is about to be removed from the hash table or for a value that is about
-// to be replaced in the hash table.
-typedef void (*HashTableDestroyFunction)(void *);
-
-// Print function for the hash table. Prints a key or value to standard output.
-typedef void (*HashTablePrintFunction)(void *);
 
 #define HT_FOUND 1
 #define HT_NOTFOUND 2
 #define HT_ERROR 3
 
+struct BucketNode {
+  struct BucketNode *next;
+  struct BoundedData *key;
+  struct BoundedData *value;
+  struct UsageNode *usage_node;
+};
+
+struct UsageNode {
+  struct BucketNode *bucket_node;
+  struct UsageNode *more_used;
+  struct UsageNode *less_used;
+};
+
 struct HashTable {
   uint64_t num_buckets;
   struct BucketNode **buckets;
-  HashTableHashFunction hash;
   pthread_mutex_t *mutex;
   uint64_t key_count;
-  struct Dlink *usage_queue;
+  struct UsageNode *most_used;
+  struct UsageNode *least_used;
 };
 
 // Allocates memory for a hash table (including all its buckets, the mutex and
