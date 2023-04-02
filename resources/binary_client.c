@@ -56,7 +56,7 @@ static void die(char *s, ...)
 	vfprintf(stderr, s, v);
 	fprintf(stderr, "\n");
 	va_end(v);
-	fprintf(stderr, " -- errno = %i (%m)\n", errno);
+	fprintf(stderr, " -- errno = %i (%s)\n", errno, strerror(errno));
 
 	fflush(stderr);
 	abort();
@@ -238,7 +238,7 @@ void del(const char *k)
 char * input(int *lenp)
 {
 	char *ret = malloc(1024);
-	int off = 0, sz = 1024;
+	size_t off = 0, sz = 1024;
 	int rc;
 
 	while ((rc = read(0, ret + off, sz - off)) > 0) {
