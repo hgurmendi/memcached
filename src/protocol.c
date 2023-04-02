@@ -148,13 +148,14 @@ void handle_del(struct EventData *event_data, struct WorkerArgs *args,
 void handle_get(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key) {
   struct BoundedData *value = NULL;
-  // TODO: handle BT_ERROR!
   int rv = hashtable_get(args->hashtable, key, &value);
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
     event_data->response_content = value;
-  } else {
+  } else if (rv == BT_ENOTFOUND) {
     event_data->response_type = BT_ENOTFOUND;
+  } else {
+    event_data->response_type = BT_EUNK;
   }
   args->workers_stats[args->worker_id].get_count++;
 }
@@ -180,7 +181,11 @@ void handle_take(struct EventData *event_data, struct WorkerArgs *args,
 void handle_put(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key, struct BoundedData *value) {
   // TODO: handle BT_ERROR!
-  hashtable_insert(args->hashtable, key, value);
-  event_data->response_type = BT_OK;
-  args->workers_stats[args->worker_id].put_count++;
+  int rv = hashtable_insert(args->hashtable, key, value);
+  if (rv == HT_ERROR) {
+    event_data->response_type = BT_EUNK;
+  } else {
+    event_data->response_type = BT_OK;
+    args->workers_stats[args->worker_id].put_count++;
+  }
 }

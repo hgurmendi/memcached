@@ -148,6 +148,8 @@ int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
       malloc_evict(hashtable, sizeof(struct BucketNode));
   if (new_node == NULL) {
     pthread_mutex_unlock(hashtable->mutex);
+    bounded_data_destroy(key);
+    bounded_data_destroy(value);
     return HT_ERROR;
   }
   new_node->key = key;
@@ -159,8 +161,10 @@ int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
   struct UsageNode *new_usage_node =
       malloc_evict(hashtable, sizeof(struct UsageNode));
   if (new_usage_node == NULL) {
-    free(new_node);
     pthread_mutex_unlock(hashtable->mutex);
+    free(new_node);
+    bounded_data_destroy(key);
+    bounded_data_destroy(value);
     return HT_ERROR;
   }
   new_usage_node->less_used = NULL; // Just in case.
