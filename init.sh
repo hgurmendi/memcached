@@ -1,3 +1,6 @@
 #!/bin/sh
 
-./memcached 7666 7667
+TEXT_PORT=${1}
+BINARY_PORT=${2}
+
+./memcached ${TEXT_PORT} ${BINARY_PORT}

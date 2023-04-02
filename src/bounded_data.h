@@ -31,6 +31,10 @@ struct BoundedData *bounded_data_create_from_string_duplicate(char *str);
 // returning the BoundedData instance.
 struct BoundedData *bounded_data_create_from_string(char *str);
 
+// Allocates memory for a BoundedData instance and for a new buffer with the
+// given size. Returns the BoundedData instance.
+struct BoundedData *bounded_data_create(uint64_t size);
+
 // True if the given BoundedData instances are equal byte-by-byte, false
 // otherwise.
 bool bounded_data_equals(struct BoundedData *a, struct BoundedData *b);

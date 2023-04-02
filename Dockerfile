@@ -5,7 +5,7 @@ WORKDIR soi-memcached/
 
 # Install the dependencies.
 RUN apk update
-RUN apk add --no-cache --update gcc libc-dev make
+RUN apk add --no-cache --update gcc libc-dev make clang-extra-tools git
 
 # Copy the source contents into the container.
 COPY ./src .
@@ -20,5 +20,6 @@ EXPOSE 7666 7667
 COPY ./init.sh .
 RUN chmod +x init.sh
 
-# Run the server
-ENTRYPOINT ["./init.sh"]
+# Commented out the entrypoint in order to try running a VSCode dev container.
+# # Run the server
+# ENTRYPOINT ["./init.sh"]

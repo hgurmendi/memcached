@@ -1,3 +1,5 @@
+#ifndef __BOUNDED_DATA_HASHTABLE_H__
+#define __BOUNDED_DATA_HASHTABLE_H__
 
 #include "bounded_data.h"
 #include "hashtable.h"
@@ -18,3 +20,7 @@ int bd_hashtable_remove(struct HashTable *hashtable, struct BoundedData *key);
 void bd_hashtable_print(struct HashTable *hashtable);
 
 void bd_hashtable_destroy(struct HashTable *hashtable);
+
+uint64_t bd_hashtable_key_count(struct HashTable *hashtable);
+
+#endif
