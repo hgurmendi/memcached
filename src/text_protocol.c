@@ -139,8 +139,14 @@ static void parse_text_request(struct WorkerArgs *args,
   }
 
   if (argument_count == 1 && !strcmp(command, binary_type_str(BT_DEL))) {
+    size_t key_len = strlen(first_arg);
+    if (key_len <= 0) {
+      // Invalid DEL.
+      return;
+    }
+    // TODOMEM
     struct BoundedData *key =
-        bounded_data_create_from_buffer(first_arg, strlen(first_arg));
+        bounded_data_create_from_buffer(first_arg, key_len);
     handle_del(event_data, args, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
@@ -152,8 +158,14 @@ static void parse_text_request(struct WorkerArgs *args,
   }
 
   if (argument_count == 1 && !strcmp(command, binary_type_str(BT_GET))) {
+    size_t key_len = strlen(first_arg);
+    if (key_len <= 0) {
+      // Invalid GET.
+      return;
+    }
+    // TODOMEM
     struct BoundedData *key =
-        bounded_data_create_from_buffer(first_arg, strlen(first_arg));
+        bounded_data_create_from_buffer(first_arg, key_len);
     handle_get(event_data, args, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
@@ -166,8 +178,14 @@ static void parse_text_request(struct WorkerArgs *args,
   }
 
   if (argument_count == 1 && !strcmp(command, binary_type_str(BT_TAKE))) {
+    size_t key_len = strlen(first_arg);
+    if (key_len <= 0) {
+      // Invalid TAKE.
+      return;
+    }
+    // TODOMEM
     struct BoundedData *key =
-        bounded_data_create_from_buffer(first_arg, strlen(first_arg));
+        bounded_data_create_from_buffer(first_arg, key_len);
     handle_take(event_data, args, key);
     // The `key->data` pointer is not freeable through `free` because it points
     // to the middle of a pointer allocated with `malloc`. So we destroy the
@@ -187,8 +205,10 @@ static void parse_text_request(struct WorkerArgs *args,
       return;
     }
     // The BoundedData instances below will be "owned" by the hash table.
+    // TODOMEM
     struct BoundedData *key =
         bounded_data_create_from_buffer_duplicate(first_arg, key_len);
+    // TODOMEM
     struct BoundedData *value =
         bounded_data_create_from_buffer_duplicate(second_arg, value_len);
     handle_put(event_data, args, key, value);
@@ -287,6 +307,7 @@ int handle_text_client_request(struct WorkerArgs *args,
   // If we didn't start reading from the client yet, prepare everything and
   // begin.
   if (event_data->client_state == TEXT_READY) {
+    // TODOMEM
     event_data->read_buffer = bounded_data_create(TEXT_REQUEST_BUFFER_SIZE);
     event_data->total_bytes_read = 0;
     event_data->client_state = TEXT_READING_INPUT;

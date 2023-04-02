@@ -45,6 +45,7 @@ static void accept_connections(struct WorkerArgs *args, int incoming_fd) {
 
     // Allocate memory for the event data that we'll store in the epoll
     // instance.
+    // TODOMEM
     struct EventData *event_data = event_data_create(
         client_fd, incoming_fd == args->binary_fd ? BINARY : TEXT);
 

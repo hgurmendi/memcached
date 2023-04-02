@@ -167,6 +167,7 @@ int handle_binary_client_request(struct WorkerArgs *args,
     event_data->total_bytes_read = 0;
     // Convert the read size from network byte order to host byte order.
     event_data->arg_size = ntohl(event_data->arg_size);
+    // TODOMEM
     event_data->arg1 = bounded_data_create(event_data->arg_size);
     event_data->client_state = BINARY_READING_ARG1_DATA;
   }
@@ -230,6 +231,7 @@ int handle_binary_client_request(struct WorkerArgs *args,
     event_data->total_bytes_read = 0;
     // Convert the read size from network byte order to host byte order.
     event_data->arg_size = ntohl(event_data->arg_size);
+    // TODOMEM
     event_data->arg2 = bounded_data_create(event_data->arg_size);
     event_data->client_state = BINARY_READING_ARG2_DATA;
   }

@@ -120,10 +120,12 @@ void handle_stats(struct EventData *event_data, struct WorkerArgs *args) {
 
   event_data->response_type = BT_OK;
   // The response content doesn't include the trailing '\0'.
+  // TODOMEM
   event_data->response_content =
       bounded_data_create_from_buffer_duplicate(stats_content, bytes_written);
   args->workers_stats[args->worker_id].stats_count++;
 
+  // TODO REMOVE
   hashtable_print(args->hashtable);
   hashtable_print_usage_queue(args->hashtable);
 }
@@ -146,6 +148,7 @@ void handle_del(struct EventData *event_data, struct WorkerArgs *args,
 void handle_get(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key) {
   struct BoundedData *value = NULL;
+  // TODO: handle BT_ERROR!
   int rv = hashtable_get(args->hashtable, key, &value);
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
@@ -176,6 +179,7 @@ void handle_take(struct EventData *event_data, struct WorkerArgs *args,
 // operation.
 void handle_put(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key, struct BoundedData *value) {
+  // TODO: handle BT_ERROR!
   hashtable_insert(args->hashtable, key, value);
   event_data->response_type = BT_OK;
   args->workers_stats[args->worker_id].put_count++;
