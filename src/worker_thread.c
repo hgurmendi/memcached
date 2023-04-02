@@ -16,6 +16,8 @@
 #include "worker_state.h"
 #include "worker_thread.h"
 
+#define SOCKET_SEND_BUFFER_SIZE 0
+
 // Accepts incoming connections
 static void accept_connections(struct WorkerArgs *args, int incoming_fd) {
   struct sockaddr incoming_addr;
@@ -82,6 +84,26 @@ static void accept_connections(struct WorkerArgs *args, int incoming_fd) {
     // characters then CTRL+D then the last characters and enter, that would be
     // read from 3 read calls).
     event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
+
+    // Make sure the write buffer is small
+#if SOCKET_SEND_BUFFER_SIZE
+    int option_value;
+    socklen_t option_len;
+    int rv = getsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &option_value,
+                        &option_len);
+    worker_log(args, "Setting write buffer size to 1024");
+    if (rv != 0) {
+      perror("getsockopt error");
+      abort();
+    }
+    option_value = 256;
+    rv = setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &option_value,
+                    sizeof(option_value));
+    if (rv != 0) {
+      perror("setsockopt error");
+      abort();
+    }
+#endif
 
     // Finally, add the client file descriptor to the epoll instance.
     status = epoll_ctl(args->epoll_fd, EPOLL_CTL_ADD, event_data->fd, &event);
