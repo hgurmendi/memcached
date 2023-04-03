@@ -1,7 +1,7 @@
 FROM alpine:3.17
 
 # Set the working directory for the container.
-WORKDIR soi-memcached/
+WORKDIR memcached/
 
 # Install the dependencies.
 RUN apk update
