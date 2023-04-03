@@ -370,10 +370,6 @@ int handle_text_client_request(struct WorkerArgs *args,
     }
   }
 
-  // TODO: add a guard here that checks the client state of TEXT_READING_INPUT
-  // and in that case runs read_until_newline. We also should respond EINVAL
-  // when the request is too long
-
   if (event_data->client_state == TEXT_READING_INPUT) {
     // Read from the client until a newline is found within the request size
     // limit and place a null character after it, or read until the buffer is

@@ -79,21 +79,10 @@ static void accept_connections(struct WorkerArgs *args, int incoming_fd) {
     }
 
     event.data.ptr = (void *)event_data;
-    // TODO: might have to change the events here? As a first thought, I think
-    // that when accepting a connection we just have to listen for incoming data
-    // (EPOLLIN) and always edge-triggered (EPOLLET) so we should be ok. After
-    // successfully reading the first content we should re-insert it with
-    // EPOLLOUT if we didn't finish writing or in EPOLLIN again to listen for
-    // more incoming connections.
-
-    // REMARK: we added EPOLLONESHOT because if the reader submits data in
-    // bursts (i.e. in netcat first some characters then CTRL+D then more
-    // characters then CTRL+D then the last characters and enter, that would be
-    // read from 3 read calls).
     event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
 
-    // Make sure the write buffer is small
 #if SOCKET_SEND_BUFFER_SIZE
+    // Make sure the write buffer is small
     int option_value;
     socklen_t option_len;
     int rv = getsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &option_value,
