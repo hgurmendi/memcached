@@ -125,6 +125,7 @@ void handle_stats(struct EventData *event_data, struct WorkerArgs *args) {
     // lack of memory.
     event_data->response_type = BT_EUNK;
   } else {
+    memcpy(event_data->response_content->data, stats_content, bytes_written);
     event_data->response_type = BT_OK;
   }
 

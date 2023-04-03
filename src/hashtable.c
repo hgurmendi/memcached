@@ -331,7 +331,7 @@ static void hashtable_print_bucket_nodes(struct HashTable *hashtable,
   printf("-> (");
   bounded_data_print(bucket_node->key);
   printf(":");
-  bounded_data_print(bucket_node->value);
+  printf("vsize%ld", bucket_node->value->size);
   printf(") ");
 
   hashtable_print_bucket_nodes(hashtable, bucket_node->next);
