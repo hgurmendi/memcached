@@ -158,7 +158,7 @@ void handle_get(struct EventData *event_data, struct WorkerArgs *args,
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
     event_data->response_content = value;
-  } else if (rv == BT_ENOTFOUND) {
+  } else if (rv == HT_NOTFOUND) {
     event_data->response_type = BT_ENOTFOUND;
   } else {
     event_data->response_type = BT_EUNK;

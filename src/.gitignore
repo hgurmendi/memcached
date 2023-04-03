@@ -1,2 +1,4 @@
 *.o
 memcached
+binder
+binder_test

@@ -4,13 +4,6 @@ import uuid
 import sys
 import argparse
 
-HOST_BYTEORDER = sys.byteorder
-NETWORK_BYTEORDER = 'big'
-
-HOST = "localhost"
-BIN_PORT = 7667
-TEXT_PORT = 7666
-
 BT_PUT = 11
 BT_DEL = 12
 BT_GET = 13
@@ -59,35 +52,6 @@ def get_printable_kind(kind: int):
     elif kind == 115:
         return "EUNK"
 
-# @dataclass
-# class Response:
-#     type: str
-#     content: Optional[bytes]
-
-# # parses the given response as a immutable bytes array and prints it.
-# def parse_response(response: bytes) -> Response:
-#     kind = int.from_bytes(response[0], HOST_BYTEORDER)
-
-#     # print(f"Received {kind_str}")
-
-#     if kind != BT_OK:
-#         # All kinds except BT_OK are single byte responses.
-#         return
-    
-#     if len(response) == 1:
-#         # An OK response with no more data means no content.
-#         return
-    
-#     content_size_bytes = response[1:5]
-#     content_size_int = int.from_bytes(content_size_bytes, byteorder='big', signed = False)
-#     # print("should receive a content with length", content_size_int)
-
-#     content = response[5:5+content_size_int]
-#     # print(f"Received the content <{content_str}> ({len(content_str)} chars)")]
-
-#     return Response(kind, content)
-
-
 def put(sock: socket, key: bytes, value: bytes) -> int:
 
     command = bytearray()
@@ -104,12 +68,12 @@ def put(sock: socket, key: bytes, value: bytes) -> int:
     return response[0]
 
 
+DEFAULT_ID = "memcached siege"
 DEFAULT_HOST = "localhost"
-DEFAULT_PORT = 7667
+DEFAULT_PORT = 8889
 DEFAULT_VALUE_SIZE = 2_000_000 # in bytes
 SERVER_MEMORY = 500_000_000 # in bytes
 SEND_INTERVAL = 0.01
-ID = "memcached siege"
 
 def main():
     """Reads the command line arguments and executes the memcached siege script.
@@ -120,7 +84,7 @@ def main():
 
     # Parser
     parser = argparse.ArgumentParser(description="Siege memcached")
-    parser.add_argument("--id", default=ID, type=str, help="Identifier for the siege instance")
+    parser.add_argument("--id", default=DEFAULT_ID, type=str, help="Identifier for the siege instance")
     parser.add_argument("--host", default=DEFAULT_HOST, type=str, help="memcached host")
     parser.add_argument("--port", default=DEFAULT_PORT, type=int, help="memcached port")
     parser.add_argument("--value-size", default=DEFAULT_VALUE_SIZE, type=int, help="Size of each value")
