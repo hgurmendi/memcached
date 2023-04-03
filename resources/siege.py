@@ -1,6 +1,4 @@
 from socket import socket, AF_INET, SOCK_STREAM
-from dataclasses import dataclass
-from typing import Optional
 import time
 import uuid
 import sys
