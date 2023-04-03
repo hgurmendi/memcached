@@ -515,7 +515,7 @@ struct BoundedData *
 hashtable_malloc_evict_bounded_data(struct HashTable *hashtable,
                                     size_t buffer_size) {
   pthread_mutex_lock(hashtable->mutex);
-  void *ptr = malloc_evict_bounded_data(hashtable, buffer_size);
+  struct BoundedData *ptr = malloc_evict_bounded_data(hashtable, buffer_size);
   pthread_mutex_unlock(hashtable->mutex);
   return ptr;
 }
