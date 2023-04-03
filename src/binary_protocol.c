@@ -34,6 +34,12 @@ int handle_binary_client_response(struct WorkerArgs *args,
       return rv;
     }
 
+    // Close the connection after sending BT_EUNK.
+    if (event_data->response_type == BT_EUNK) {
+      // TODO: maybe change the return value?
+      return CLIENT_READ_CLOSED;
+    }
+
     // Reset the total bytes written counter and determine the next state
     // depending on whether the response has additional content or not.
 

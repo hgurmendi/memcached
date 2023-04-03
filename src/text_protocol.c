@@ -306,6 +306,12 @@ int handle_text_client_response(struct WorkerArgs *args,
       return rv;
     }
 
+    // Close the connection after sending BT_EUNK.
+    if (event_data->response_type == BT_EUNK) {
+      // TODO: maybe change the return value?
+      return CLIENT_READ_CLOSED;
+    }
+
     event_data->total_bytes_written = 0;
     if (event_data->response_content != NULL) {
       // Transition to writing the content if there is something.
