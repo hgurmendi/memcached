@@ -4,9 +4,8 @@
 #include <stddef.h>    // for size_t
 #include <sys/epoll.h> // for struct epoll_event
 
-#include "bounded_data_hashtable.h" // for struct HashTable
-#include "epoll.h"                  // for struct EventData
-#include "worker_state.h"           // for struct WorkerArgs
+#include "epoll.h"        // for struct EventData
+#include "worker_state.h" // for struct WorkerArgs
 
 #define CLIENT_READ_ERROR -1001
 #define CLIENT_READ_CLOSED 0

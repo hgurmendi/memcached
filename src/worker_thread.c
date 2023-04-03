@@ -32,7 +32,7 @@ static void accept_connections(struct WorkerArgs *args, int incoming_fd) {
     client_fd = accept(incoming_fd, &incoming_addr, &incoming_addr_len);
     if (client_fd == -1) {
       if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-        // See `man 2 accept`: itt means that the socket is marked nonblocking
+        // See `man 2 accept`: it means that the socket is marked nonblocking
         // and no connections are present to be accepted. So, we processed all
         // incoming connection requests and we're done.
         return;
@@ -44,9 +44,16 @@ static void accept_connections(struct WorkerArgs *args, int incoming_fd) {
     }
 
     // Allocate memory for the event data that we'll store in the epoll
-    // instance.
-    struct EventData *event_data = event_data_create(
-        client_fd, incoming_fd == args->binary_fd ? BINARY : TEXT);
+    // instance and initialize it.
+    struct EventData *event_data =
+        hashtable_malloc_evict(args->hashtable, sizeof(struct EventData));
+    if (event_data == NULL) {
+      printf("Couldn't accept incoming connection because we ran out of "
+             "memory...\n");
+      return;
+    }
+    event_data_initialize(event_data, client_fd,
+                          incoming_fd == args->binary_fd ? BINARY : TEXT);
 
     // Get the IP address and port of the client and store it in the struct.
     status = getnameinfo(&incoming_addr, incoming_addr_len, event_data->host,
@@ -72,21 +79,10 @@ static void accept_connections(struct WorkerArgs *args, int incoming_fd) {
     }
 
     event.data.ptr = (void *)event_data;
-    // TODO: might have to change the events here? As a first thought, I think
-    // that when accepting a connection we just have to listen for incoming data
-    // (EPOLLIN) and always edge-triggered (EPOLLET) so we should be ok. After
-    // successfully reading the first content we should re-insert it with
-    // EPOLLOUT if we didn't finish writing or in EPOLLIN again to listen for
-    // more incoming connections.
-
-    // REMARK: we added EPOLLONESHOT because if the reader submits data in
-    // bursts (i.e. in netcat first some characters then CTRL+D then more
-    // characters then CTRL+D then the last characters and enter, that would be
-    // read from 3 read calls).
     event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
 
-    // Make sure the write buffer is small
 #if SOCKET_SEND_BUFFER_SIZE
+    // Make sure the write buffer is small
     int option_value;
     socklen_t option_len;
     int rv = getsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &option_value,

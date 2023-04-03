@@ -109,7 +109,7 @@ void handle_stats(struct EventData *event_data, struct WorkerArgs *args) {
   worker_stats_initialize(&aggregated_stats);
   worker_stats_reduce(args->workers_stats, args->num_workers,
                       &aggregated_stats);
-  uint64_t num_keys = bd_hashtable_key_count(args->hashtable);
+  uint64_t num_keys = hashtable_key_count(args->hashtable);
 
   int bytes_written =
       snprintf(stats_content, STATS_CONTENT_MAX_SIZE,
@@ -118,18 +118,29 @@ void handle_stats(struct EventData *event_data, struct WorkerArgs *args) {
                aggregated_stats.get_count, aggregated_stats.take_count,
                aggregated_stats.stats_count, num_keys);
 
-  event_data->response_type = BT_OK;
-  // The response content doesn't include the trailing '\0'.
   event_data->response_content =
-      bounded_data_create_from_buffer_duplicate(stats_content, bytes_written);
+      hashtable_malloc_evict_bounded_data(args->hashtable, bytes_written);
+  if (event_data->response_content == NULL) {
+    // Respond with BT_EUNK if the request can't be properly fulfilled due to
+    // lack of memory.
+    event_data->response_type = BT_EUNK;
+  } else {
+    memcpy(event_data->response_content->data, stats_content, bytes_written);
+    event_data->response_type = BT_OK;
+  }
+
   args->workers_stats[args->worker_id].stats_count++;
+
+  // TODO REMOVE
+  hashtable_print(args->hashtable);
+  hashtable_print_usage_queue(args->hashtable);
 }
 
 // Handles the DEL command and mutates the EventData instance accordingly.
 // WARNING: does not free the `key` pointer.
 void handle_del(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key) {
-  int rv = bd_hashtable_remove(args->hashtable, key);
+  int rv = hashtable_remove(args->hashtable, key);
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
   } else {
@@ -143,12 +154,14 @@ void handle_del(struct EventData *event_data, struct WorkerArgs *args,
 void handle_get(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key) {
   struct BoundedData *value = NULL;
-  int rv = bd_hashtable_get(args->hashtable, key, &value);
+  int rv = hashtable_get(args->hashtable, key, &value);
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
     event_data->response_content = value;
-  } else {
+  } else if (rv == BT_ENOTFOUND) {
     event_data->response_type = BT_ENOTFOUND;
+  } else {
+    event_data->response_type = BT_EUNK;
   }
   args->workers_stats[args->worker_id].get_count++;
 }
@@ -158,7 +171,7 @@ void handle_get(struct EventData *event_data, struct WorkerArgs *args,
 void handle_take(struct EventData *event_data, struct WorkerArgs *args,
                  struct BoundedData *key) {
   struct BoundedData *value = NULL;
-  int rv = bd_hashtable_take(args->hashtable, key, &value);
+  int rv = hashtable_take(args->hashtable, key, &value);
   if (rv == HT_FOUND) {
     event_data->response_type = BT_OK;
     event_data->response_content = value;
@@ -173,7 +186,11 @@ void handle_take(struct EventData *event_data, struct WorkerArgs *args,
 // operation.
 void handle_put(struct EventData *event_data, struct WorkerArgs *args,
                 struct BoundedData *key, struct BoundedData *value) {
-  bd_hashtable_insert(args->hashtable, key, value);
-  event_data->response_type = BT_OK;
-  args->workers_stats[args->worker_id].put_count++;
+  int rv = hashtable_insert(args->hashtable, key, value);
+  if (rv == HT_ERROR) {
+    event_data->response_type = BT_EUNK;
+  } else {
+    event_data->response_type = BT_OK;
+    args->workers_stats[args->worker_id].put_count++;
+  }
 }

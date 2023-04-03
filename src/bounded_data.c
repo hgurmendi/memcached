@@ -122,3 +122,17 @@ void bounded_data_print(struct BoundedData *bounded_data) {
 bool bounded_data_is_text_representable(struct BoundedData *bounded_data) {
   return is_text_representable(bounded_data->data, bounded_data->size);
 }
+
+#define FNV_OFFSET 14695981039346656037UL
+#define FNV_PRIME 1099511628211UL
+
+// Returns the 64-bit FNV-1a hash for the given data.
+// More information: https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function
+uint64_t bounded_data_hash(struct BoundedData *bounded_data) {
+  uint64_t hash = FNV_OFFSET;
+  for (int i = 0; i < bounded_data->size; i++) {
+    hash ^= (uint64_t)(unsigned char)bounded_data->data[i];
+    hash *= FNV_PRIME;
+  }
+  return hash;
+}

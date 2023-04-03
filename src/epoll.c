@@ -49,15 +49,9 @@ void event_data_reset(struct EventData *event_data) {
   }
 }
 
-// Allocates memory for an EventData struct with some initial data.
-struct EventData *event_data_create(int fd,
-                                    enum ConnectionType connection_type) {
-  struct EventData *event_data = malloc(sizeof(struct EventData));
-  if (event_data == NULL) {
-    perror("event_data_create malloc");
-    abort();
-  }
-
+// Initializes an EventData struct.
+void event_data_initialize(struct EventData *event_data, int fd,
+                           enum ConnectionType connection_type) {
   event_data->fd = fd;
   event_data->connection_type = connection_type;
   strncpy(event_data->host, "UNINITIALIZED", NI_MAXHOST);
@@ -69,6 +63,19 @@ struct EventData *event_data_create(int fd,
   event_data->arg1 = NULL;
   event_data->arg2 = NULL;
   event_data_reset(event_data);
+}
+
+// Allocates memory for an EventData struct and initializes it with minimal
+// data.
+struct EventData *event_data_create(int fd,
+                                    enum ConnectionType connection_type) {
+  struct EventData *event_data = malloc(sizeof(struct EventData));
+  if (event_data == NULL) {
+    perror("event_data_create malloc");
+    abort();
+  }
+
+  event_data_initialize(event_data, fd, connection_type);
 
   return event_data;
 }
