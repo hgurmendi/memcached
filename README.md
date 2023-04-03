@@ -1,4 +1,4 @@
-# soi-memcached
+# memcached
 
 A programming assignment for the Operating Systems I subject for the Computer Science degree in
 Universidad Nacional de Rosario: a memcached implementation in C.
