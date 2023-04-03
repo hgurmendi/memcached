@@ -1,6 +1,8 @@
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 int main(int argc, char *argv[]) {
@@ -19,7 +21,14 @@ int main(int argc, char *argv[]) {
   gid_t gid = getgid();
   uid_t uid = getuid();
 
-  printf("gid=%d uid=%d\n", gid, uid);
+  printf("Running with gid=%d uid=%d\n", gid, uid);
+
+  struct stat statbuf;
+
+  fstat(text_fd, &statbuf);
+  printf("text_fd socket? %s\n", S_ISSOCK(statbuf.st_mode) ? "YES" : "NO");
+  fstat(binary_fd, &statbuf);
+  printf("binary_fd socket? %s\n", S_ISSOCK(statbuf.st_mode) ? "YES" : "NO");
 
   close(text_fd);
   close(binary_fd);
