@@ -4,6 +4,7 @@
 #include "sockets.h"
 
 int main(int argc, char *argv[]) {
+
   if (argc != 4) {
     fprintf(stderr, "USAGE: %s MEMCACHED_BINARY TEXT_PORT BINARY_PORT\n",
             argv[0]);

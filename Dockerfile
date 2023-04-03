@@ -13,12 +13,12 @@ COPY ./src .
 # Build the project.
 RUN make
 
-# Expose the ports 7666 and 7667 for the text and binary protocols, respectively.
-EXPOSE 7666 7667
+# # Expose the ports 7666 and 7667 for the text and binary protocols, respectively.
+# EXPOSE 7666 7667
 
 # Copy the server runner into the container and mark it as executable.
-COPY ./init.sh .
-RUN chmod +x init.sh
+COPY ./docker_init.sh .
+RUN chmod +x docker_init.sh
 
 # Commented out the entrypoint in order to try running a VSCode dev container.
 # # Run the server
