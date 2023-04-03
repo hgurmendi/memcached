@@ -111,10 +111,18 @@ DEFAULT_PORT = 7667
 DEFAULT_VALUE_SIZE = 2_000_000 # in bytes
 SERVER_MEMORY = 500_000_000 # in bytes
 SEND_INTERVAL = 0.01
+ID = "memcached siege"
 
 def main():
+    """Reads the command line arguments and executes the memcached siege script.
+
+    To run in parallel:
+    $ seq 1 ${NUM} | parallel --jobs {NUM} --ungroup python siege.py --id {} --log-every 2 --value 5000
+    """
+
     # Parser
     parser = argparse.ArgumentParser(description="Siege memcached")
+    parser.add_argument("--id", default=ID, type=str, help="Identifier for the siege instance")
     parser.add_argument("--host", default=DEFAULT_HOST, type=str, help="memcached host")
     parser.add_argument("--port", default=DEFAULT_PORT, type=int, help="memcached port")
     parser.add_argument("--value-size", default=DEFAULT_VALUE_SIZE, type=int, help="Size of each value")
@@ -126,6 +134,8 @@ def main():
     parser.add_argument("--total", default=None, type=int, help="Total amount of requests to send")
 
     args = parser.parse_args()
+
+    print(f"Starting with id \"{args.id}\"...")
 
     sock = socket(AF_INET, SOCK_STREAM)
     sock.connect((args.host, args.port))
@@ -142,7 +152,7 @@ def main():
 
         response_code = put(sock, key, value)
         if (response_code != BT_OK):
-            print(f"Received response: {get_printable_kind(response_code)}")
+            print(f"{args.id}> Received response: {get_printable_kind(response_code)}")
             if args.stop_after_failure:
                 exit()
         
@@ -151,12 +161,12 @@ def main():
         time.sleep(args.interval)
 
         if counter % args.log_every == 0:
-            print(f"Total PUTs sent: {counter}")
+            print(f"{args.id}> Total PUTs sent: {counter}")
             memory_percent = memory_sent / args.server_memory * 100
-            print(f"Approx memory sent: {memory_sent} (~{memory_percent}%)")
+            print(f"{args.id}> Approx memory sent: {memory_sent} (~{memory_percent}%)")
         
         if args.total is not None and counter >= args.total:
-            print("Done!")
+            print(f"{args.id}> Done!")
             return
 
 
