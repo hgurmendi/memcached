@@ -3,17 +3,17 @@
 
 #include "sockets.h"
 
-#define SERVER_BINARY "memcached"
-
 int main(int argc, char *argv[]) {
-  if (argc != 3) {
-    fprintf(stderr, "USAGE: %s TEXT_PORT BINARY_PORT\n", argv[0]);
+  if (argc != 4) {
+    fprintf(stderr, "USAGE: %s MEMCACHED_BINARY TEXT_PORT BINARY_PORT\n",
+            argv[0]);
     return 1;
   }
 
   int rv;
-  char *text_port = argv[1];
-  char *binary_port = argv[2];
+  char *memcached_binary = argv[1];
+  char *text_port = argv[2];
+  char *binary_port = argv[3];
   gid_t gid = getgid();
   uid_t uid = getuid();
 
@@ -58,9 +58,9 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  char *args[] = {SERVER_BINARY, text_fd_arg, binary_fd_arg, NULL};
+  char *args[] = {memcached_binary, text_fd_arg, binary_fd_arg, NULL};
 
-  execv(SERVER_BINARY, args);
+  execv(memcached_binary, args);
 
   perror("ERROR during execv for cache executable.\n");
   close(text_fd);
