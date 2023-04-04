@@ -1,7 +1,7 @@
 -module(memcached).
--compile(export_all).
+-export([start/0, start/1, put/3, del/2, get/2, take/2, stats/1]).
 
--define(BINARY_PORT, 8889).
+-define(BINARY_PORT, 889).
 
 % memcached commands.
 -define(BT_PUT, 11).
@@ -12,13 +12,7 @@
 
 % memcached response codes.
 -define(BT_OK, 101).
-%% not actually used.
--define(BT_EINVAL, 111).
 -define(BT_ENOTFOUND, 112).
-% not actually used.
--define(BT_EBINARY, 113).
-% not actually used.
--define(BT_EBIG, 114).
 % use to signal a memory error.
 -define(BT_EUNK, 115).
 
@@ -27,7 +21,6 @@ start(Ip) ->
         {ok, Socket} -> {ok, Socket};
         Error -> Error
     end.
-
 start() -> start(localhost).
 
 % Builds the binary payload of a request argument according to the protocol.
@@ -114,7 +107,7 @@ receive_get_response(Socket) ->
         {ok, <<?BT_EUNK>>} ->
             {ok, eunk};
         {ok, _} ->
-            {ok, unknown};
+            {ok, unexpected_response_code};
         Error ->
             Error
     end.
@@ -148,7 +141,7 @@ receive_take_response(Socket) ->
         {ok, <<?BT_EUNK>>} ->
             {ok, eunk};
         {ok, _} ->
-            {ok, unknown};
+            {ok, unexpected_response_code};
         Error ->
             Error
     end.
@@ -179,7 +172,7 @@ receive_del_response(Socket) ->
         {ok, <<?BT_EUNK>>} ->
             {ok, eunk};
         {ok, _} ->
-            {ok, unknown};
+            {ok, unexpected_response_code};
         Error ->
             Error
     end.
@@ -213,7 +206,7 @@ receive_stats_response(Socket) ->
         {ok, <<?BT_EUNK>>} ->
             {ok, eunk};
         {ok, _} ->
-            {ok, unknown};
+            {ok, unexpected_response_code};
         Error ->
             Error
     end.
