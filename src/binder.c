@@ -18,10 +18,17 @@ int main(int argc, char *argv[]) {
   gid_t gid = getgid();
   uid_t uid = getuid();
 
-  if (uid != 0) {
-    fprintf(stderr, "ERROR: should run as root.\n");
-    return 1;
-  }
+  printf("Running with gid=%d uid=%d\n", gid, uid);
+
+  // if (uid != 0) {
+  //   fprintf(stderr, "ERROR: should run as root.\n");
+  //   return 1;
+  // }
+
+  gid_t egid = getegid();
+  uid_t euid = geteuid();
+
+  printf("Running with egid=%d euid=%d\n", egid, euid);
 
   // Bind sockets while we have root privileges.
   int text_fd = create_listen_socket(text_port);

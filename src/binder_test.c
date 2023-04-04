@@ -23,6 +23,11 @@ int main(int argc, char *argv[]) {
 
   printf("Running with gid=%d uid=%d\n", gid, uid);
 
+  gid_t egid = getegid();
+  uid_t euid = geteuid();
+
+  printf("Running with egid=%d euid=%d\n", egid, euid);
+
   struct stat statbuf;
 
   fstat(text_fd, &statbuf);

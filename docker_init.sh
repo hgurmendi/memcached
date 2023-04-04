@@ -1,3 +1,4 @@
 #!/bin/sh
 
-./binder memcached 888 889
+getent passwd
+./binder binder_test 888 889

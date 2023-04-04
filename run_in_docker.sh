@@ -14,4 +14,4 @@ docker rm -f memcached
 # We have to pass --init so that signals are forwarded to the container so we can use
 # CTRL+C to stop the process.
 echo "Running the server in the container..."
-docker run --init -p 8888:888 -p 8889:889 --rm -it --name memcached memcached sh -c "./docker_init.sh"
+docker run --user memcached --init -p 8888:888 -p 8889:889 --rm -it --name memcached memcached sh -c "./docker_init.sh"
