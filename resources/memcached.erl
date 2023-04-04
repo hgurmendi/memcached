@@ -12,10 +12,14 @@
 
 % memcached response codes.
 -define(BT_OK, 101).
+%% not actually used.
 -define(BT_EINVAL, 111).
 -define(BT_ENOTFOUND, 112).
+% not actually used.
 -define(BT_EBINARY, 113).
+% not actually used.
 -define(BT_EBIG, 114).
+% use to signal a memory error.
 -define(BT_EUNK, 115).
 
 start(Ip) ->
@@ -76,8 +80,8 @@ send_put_request(Socket, Key, Value) ->
 % Receives the response to the PUT request.
 receive_put_response(Socket) ->
     case gen_tcp:recv(Socket, 1) of
-        {ok, <<?BT_OK>>} -> ok;
-        {ok, _} -> unknown;
+        {ok, <<?BT_OK>>} -> {ok, ok};
+        {ok, <<?BT_EUNK>>} -> {ok, eunk};
         Error -> Error
     end.
 
@@ -123,6 +127,71 @@ get(Socket, Key) ->
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% TAKE
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Sends the TAKE request with an Erlang term.
+send_take_request(Socket, Key) ->
+    Payload = build_request_payload(?BT_TAKE, Key),
+    gen_tcp:send(Socket, Payload).
+
+% Receives the response to the TAKE request.
+receive_take_response(Socket) ->
+    case gen_tcp:recv(Socket, 1) of
+        {ok, <<?BT_OK>>} ->
+            case receive_term(Socket) of
+                {ok, Term} -> {ok, Term};
+                Error -> Error
+            end;
+        {ok, <<?BT_ENOTFOUND>>} ->
+            {ok, enotfound};
+        {ok, <<?BT_EUNK>>} ->
+            {ok, eunk};
+        {ok, _} ->
+            {ok, unknown};
+        Error ->
+            Error
+    end.
+
+% Sends a TAKE request and waits for the response.
+take(Socket, Key) ->
+    case send_take_request(Socket, Key) of
+        ok -> receive_take_response(Socket);
+        Error -> Error
+    end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% DEL
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Sends the DEL request with an Erlang term.
+send_del_request(Socket, Key) ->
+    Payload = build_request_payload(?BT_DEL, Key),
+    gen_tcp:send(Socket, Payload).
+
+% Receives the response to the DEL request.
+receive_del_response(Socket) ->
+    case gen_tcp:recv(Socket, 1) of
+        {ok, <<?BT_OK>>} ->
+            {ok, ok};
+        {ok, <<?BT_ENOTFOUND>>} ->
+            {ok, enotfound};
+        {ok, <<?BT_EUNK>>} ->
+            {ok, eunk};
+        {ok, _} ->
+            {ok, unknown};
+        Error ->
+            Error
+    end.
+
+% Sends a DEL request and waits for the response.
+del(Socket, Key) ->
+    case send_del_request(Socket, Key) of
+        ok -> receive_del_response(Socket);
+        Error -> Error
+    end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% STATS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -141,6 +210,8 @@ receive_stats_response(Socket) ->
                 Error ->
                     Error
             end;
+        {ok, <<?BT_EUNK>>} ->
+            {ok, eunk};
         {ok, _} ->
             {ok, unknown};
         Error ->
