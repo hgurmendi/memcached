@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
 
   execv(memcached_binary, args);
 
-  perror("ERROR during execv for cache executable.\n");
+  perror("ERROR during execv for cache executable");
   close(text_fd);
   close(binary_fd);
   return 1;
