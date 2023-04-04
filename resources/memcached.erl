@@ -21,7 +21,7 @@
 start(Ip) ->
     case gen_tcp:connect(Ip, ?BINARY_PORT, [binary, {active, false}, {packet, raw}]) of
         {ok, Socket} -> {ok, Socket};
-        {error, Reason} -> io:format("Error connecting to memcached. Reason: ~p~n", [Reason])
+        Error -> Error
     end.
 
 start() -> start(localhost).
@@ -68,19 +68,22 @@ receive_term(Socket) ->
 %%% PUT
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Sends the PUT request with Erlang terms.
 send_put_request(Socket, Key, Value) ->
     Payload = build_request_payload(?BT_PUT, Key, Value),
     gen_tcp:send(Socket, Payload).
 
+% Receives the response to the PUT request.
 receive_put_response(Socket) ->
     case gen_tcp:recv(Socket, 1) of
         {ok, <<?BT_OK>>} -> ok;
+        {ok, _} -> unknown;
         Error -> Error
     end.
 
-handle_put(Socket, Key, Value) ->
+% Sends a PUT request and waits for the response.
+put(Socket, Key, Value) ->
     case send_put_request(Socket, Key, Value) of
-        % handle returning the term here
         ok -> receive_put_response(Socket);
         Error -> Error
     end.
@@ -89,33 +92,32 @@ handle_put(Socket, Key, Value) ->
 %%% GET
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Sends the GET request with an Erlang term.
 send_get_request(Socket, Key) ->
     Payload = build_request_payload(?BT_GET, Key),
     gen_tcp:send(Socket, Payload).
 
+% Receives the response to the GET request.
 receive_get_response(Socket) ->
     case gen_tcp:recv(Socket, 1) of
         {ok, <<?BT_OK>>} ->
             case receive_term(Socket) of
-                {ok, Term} ->
-                    io:format("Heres the term we saved: ~p~n", [Term]),
-                    {ok, Term};
-                Error ->
-                    Error
+                {ok, Term} -> {ok, Term};
+                Error -> Error
             end;
         {ok, <<?BT_ENOTFOUND>>} ->
-            io:format("Wasnt found");
+            {ok, enotfound};
         {ok, <<?BT_EUNK>>} ->
-            io:format("Memory error");
+            {ok, eunk};
         {ok, _} ->
-            io:format("unexpected response code~n");
+            {ok, unknown};
         Error ->
             Error
     end.
 
-handle_get(Socket, Key) ->
+% Sends a PUT request and waits for the response.
+get(Socket, Key) ->
     case send_get_request(Socket, Key) of
-        % handle returning the term here
         ok -> receive_get_response(Socket);
         Error -> Error
     end.
@@ -124,10 +126,12 @@ handle_get(Socket, Key) ->
 %%% STATS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Sends the STATS request.
 send_stats_request(Socket) ->
     Payload = build_request_payload(?BT_STATS),
     gen_tcp:send(Socket, Payload).
 
+% Receives the response to the STATS request.
 receive_stats_response(Socket) ->
     case gen_tcp:recv(Socket, 1) of
         {ok, <<?BT_OK>>} ->
@@ -138,12 +142,13 @@ receive_stats_response(Socket) ->
                     Error
             end;
         {ok, _} ->
-            io:format("unexpected response code~n");
+            {ok, unknown};
         Error ->
             Error
     end.
 
-handle_stats(Socket) ->
+% Sends a STATS request and waits for the response.
+stats(Socket) ->
     case send_stats_request(Socket) of
         ok -> receive_stats_response(Socket);
         Error -> Error
