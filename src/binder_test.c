@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 int main(int argc, char *argv[]) {
+
   if (argc != 3) {
     fprintf(stderr, "USAGE: %s TEXT_SOCKET_FD BINARY_SOCKET_FD\n", argv[0]);
     return 1;
