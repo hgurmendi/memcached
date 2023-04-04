@@ -1,3 +1,3 @@
 #!/bin/sh
 
-./binder memcached 888 889
+./binder memcached 888 889 420 420

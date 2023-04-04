@@ -1,12 +1,14 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "sockets.h"
 
 int main(int argc, char *argv[]) {
 
-  if (argc != 4) {
-    fprintf(stderr, "USAGE: %s MEMCACHED_BINARY TEXT_PORT BINARY_PORT\n",
+  if (argc != 6) {
+    fprintf(stderr,
+            "USAGE: %s MEMCACHED_BINARY TEXT_PORT BINARY_PORT GID UID\n",
             argv[0]);
     return 1;
   }
@@ -15,10 +17,16 @@ int main(int argc, char *argv[]) {
   char *memcached_binary = argv[1];
   char *text_port = argv[2];
   char *binary_port = argv[3];
-  gid_t gid = getgid();
-  uid_t uid = getuid();
+  char *gid_str = argv[4];
+  char *uid_str = argv[5];
+  gid_t current_gid = getgid();
+  uid_t current_uid = getuid();
+  gid_t gid = atoi(gid_str);
+  uid_t uid = atoi(uid_str);
 
-  if (uid != 0) {
+  printf("Running the binder with uid=%d gid=%d\n", current_uid, current_gid);
+
+  if (current_uid != 0) {
     fprintf(stderr, "ERROR: should run as root.\n");
     return 1;
   }
@@ -28,13 +36,13 @@ int main(int argc, char *argv[]) {
   int binary_fd = create_listen_socket(binary_port);
 
   // Drop root privileges now that we binded the sockets.
-  if (setgid(gid) == -1) { // TODO: change to an appropriate gid.
+  if (setgid(gid) == -1) {
     fprintf(stderr, "ERROR: couldn't drop group privileges.\n");
     close(text_fd);
     close(binary_fd);
     return 1;
   }
-  if (setuid(uid) == -1) { // TODO: change to an appropriate uid.
+  if (setuid(uid) == -1) {
     fprintf(stderr, "ERROR: couldn't drop user privileges.\n");
     close(text_fd);
     close(binary_fd);
