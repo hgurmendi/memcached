@@ -39,8 +39,14 @@ There are a couple of compilation time parameters for the cache which can be cha
 Just run the following command as root (so that it can bind privileged ports):
 
 ```bash
-$ ./binder <TEXT_PORT> <BINARY_PORT>
+$ ./binder $MEMCACHED_EXECUTABLE $TEXT_PORT $BINARY_PORT $TARGET_GID $TARGET_UID
 ```
+
+Make sure to provide a valid value for `$MEMCACHED_EXECUTABLE` (should be `memcached`), the default
+value for `$TEXT_PORT` should be `888`, the default value for `$BINARY_PORT` should be `889` and
+finally the values for `$TARGET_GID` and `$TARGET_UID` should be the gid and uid of the group and
+user that the binder will drop privileges to, which in most cases it's both `1000` (usually the
+first user created in a Linux system).
 
 # Docker instructions
 

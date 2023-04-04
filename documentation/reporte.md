@@ -114,3 +114,17 @@ En el directorio `resources/` se incluye un pequeño script de Python que fue im
 rápidamente y que fue utilizado para analizar de forma rápida la performance del servidor de cache.
 Dicho script se puede usar junto con GNU Parallel para bombardear el servidor con pedidos. Más
 información sobre el script en el archivo `README.md`.
+
+# Corriendo el proyecto
+
+Para correr el proyecto se debería correr `make` en el directorio `src/` y luego correr el programa
+"binder" de la siguiente forma:
+
+```bash
+$ sudo ./binder memcached 888 889 1000 1000
+```
+
+El comando de arriba correrá el programa `binder` que creará los sockets de escucha para ambos
+protocolos en los puertos privilegiados 888 y 889, tirará los permisos de root y luego ejecutará el
+programa `memcached` como el usuario 1000 con el grupo 1000 (que son generalmente los valores
+más comunes).
