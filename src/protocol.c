@@ -46,11 +46,6 @@ int write_buffer(int fd, char *buffer, size_t buffer_size,
       return CLIENT_WRITE_ERROR;
     }
 
-    // TODO: remove this log after we test the resume behavior.
-    if (nwritten != remaining_bytes) {
-      printf("UNABLE TO WRITE ALL THE CONTENT, WE HAVE TO CONTINUE TRYING\n");
-    }
-
     *total_bytes_written += nwritten;
   }
 
@@ -84,11 +79,6 @@ int read_buffer(int fd, char *buffer, size_t buffer_size,
     } else if (nread == 0) {
       // Client disconnected gracefully.
       return CLIENT_READ_CLOSED;
-    }
-
-    // TODO: remove this log after we test the resume behavior.
-    if (nread != remaining_bytes) {
-      printf("UNABLE TO READ ALL THE CONTENT, WE HAVE TO CONTINUE TRYING\n");
     }
 
     // Update the counter.
@@ -130,10 +120,6 @@ void handle_stats(struct EventData *event_data, struct WorkerArgs *args) {
   }
 
   args->workers_stats[args->worker_id].stats_count++;
-
-  // TODO REMOVE
-  hashtable_print(args->hashtable);
-  hashtable_print_usage_queue(args->hashtable);
 }
 
 // Handles the DEL command and mutates the EventData instance accordingly.

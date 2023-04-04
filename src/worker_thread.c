@@ -117,13 +117,15 @@ static void handle_client_outcome(int rv, struct WorkerArgs *args,
 
   switch (rv) {
   case CLIENT_READ_INCOMPLETE:
-    worker_log(args, "Read incomplete while in state <%s>, waiting for more.",
-               client_state_str(event_data->client_state));
+    // worker_log(args, "Read incomplete while in state <%s>, waiting for
+    // more.",
+    //            client_state_str(event_data->client_state));
     epoll_mod_client(args->epoll_fd, event, EPOLLIN);
     break;
   case CLIENT_WRITE_INCOMPLETE:
-    worker_log(args, "Write incomplete while in state <%s>, waiting for more.",
-               client_state_str(event_data->client_state));
+    // worker_log(args, "Write incomplete while in state <%s>, waiting for
+    // more.",
+    //            client_state_str(event_data->client_state));
     epoll_mod_client(args->epoll_fd, event, EPOLLOUT);
     break;
   case CLIENT_READ_ERROR:
@@ -142,7 +144,7 @@ static void handle_client_outcome(int rv, struct WorkerArgs *args,
     event_data_close_client(event_data);
     break;
   case CLIENT_WRITE_SUCCESS:
-    worker_log(args, "Request successfully handled");
+    // worker_log(args, "Request successfully handled");
     // Read next request.
     event_data_reset(event_data);
     epoll_mod_client(args->epoll_fd, event, EPOLLIN);
@@ -161,9 +163,10 @@ static void handle_client(struct WorkerArgs *args, struct epoll_event *event) {
   int rv;
 
   if (event->events & EPOLLIN) {
-    worker_log(args, "fd %d (%s) is ready to read (state %s)...",
-               event_data->fd, connection_type_str(event_data->connection_type),
-               client_state_str(event_data->client_state));
+    // worker_log(args, "fd %d (%s) is ready to read (state %s)...",
+    //            event_data->fd,
+    //            connection_type_str(event_data->connection_type),
+    //            client_state_str(event_data->client_state));
 
     if (event_data->connection_type == TEXT) {
       rv = handle_text_client_request(args, event);
@@ -174,9 +177,10 @@ static void handle_client(struct WorkerArgs *args, struct epoll_event *event) {
     handle_client_outcome(rv, args, event);
     return;
   } else if (event->events & EPOLLOUT) {
-    worker_log(args, "fd %d (%s) is ready to write (state %s)...",
-               event_data->fd, connection_type_str(event_data->connection_type),
-               client_state_str(event_data->client_state));
+    // worker_log(args, "fd %d (%s) is ready to write (state %s)...",
+    //            event_data->fd,
+    //            connection_type_str(event_data->connection_type),
+    //            client_state_str(event_data->client_state));
 
     if (event_data->connection_type == TEXT) {
       rv = handle_text_client_response(args, event);
@@ -226,15 +230,11 @@ void *worker(void *_args) {
           event_data->fd == args->binary_fd) {
         // Accept the new client and set them up depending on the type of
         // connection.
-        worker_log(args, "Accepting client connections...");
         accept_connections(args, event_data->fd);
         // Keep processing ids...
         continue;
       }
 
-      // At this point, we have to respond to ready for reading or ready for
-      // writing FOR A CLIENT.
-      worker_log(args, "Received something from a client...");
       handle_client(args, &events[i]);
     }
   }

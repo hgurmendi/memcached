@@ -455,10 +455,6 @@ static void *malloc_evict(struct HashTable *hashtable, size_t size) {
   do {
     ptr = malloc(size);
     if (ptr == NULL) {
-      // TODO: remove after testing.
-      printf("EVICTION FROM MALLOC #%d/%d!\n",
-             MAX_EVICTIONS_PER_OPERATION - remaining_evictions + 1,
-             MAX_EVICTIONS_PER_OPERATION);
       rv = evict_lru(hashtable);
       if (rv == HT_NOTFOUND) {
         printf("HUGE ERROR\n");
@@ -472,6 +468,7 @@ static void *malloc_evict(struct HashTable *hashtable, size_t size) {
     return ptr;
   } while (remaining_evictions > 0);
 
+  printf("Eviction failure!\n");
   return NULL;
 }
 
