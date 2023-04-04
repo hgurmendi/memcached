@@ -19,23 +19,27 @@ Just run the following inside the `src` directory:
 $ make
 ```
 
-The `memcached` executable will be built for you, assuming you're in a Linux environment. Otherwise,
-you should check the [Docker instructions](#docker-instructions).
+The `binder` and `memcached` executables will be built for you, assuming you're in a Linux
+environment (the server uses epoll to handle the sockets). Otherwise, you can check the [Docker instructions](#docker-instructions) to run it in a somewhat portable way.
+
+The `binder` executable implements the binding of the listen sockets (for both the text and binary
+protocols), then drops the privileges and finally runs the `memcached` executable passing the file
+descriptors as arguments.
 
 There are a couple of compilation time parameters for the cache which can be changed in the
 `src/parameters.h` file:
 
 - `HASH_TABLE_BUCKETS_SIZE`: determines the number of buckets in the hash table.
-- `MEMORY_LIMIT`: (soft) limit for the memory of the process.
+- `MEMORY_LIMIT`: (soft) limit for the memory of the process, in bytes.
 - `MAX_EVICITIONS_PER_OPERATION`: Maximum number of evictions that are made before giving up on a
   malloc.
 
 # Run instructions
 
-Just run:
+Just run the following command as root (so that it can bind privileged ports):
 
 ```bash
-$ ./memcached <TEXT_PORT> <BINARY_PORT>
+$ ./binder <TEXT_PORT> <BINARY_PORT>
 ```
 
 # Docker instructions
@@ -66,15 +70,40 @@ eviction failure (which might indicate memory leaks). The Python script supports
 parameters, which can be found by running:
 
 ```bash
-python siege.py --help
+$ python siege.py --help
 ```
 
 If you want to benchmark the performance of the server, you can combine the script with GNU
 Parallel in the following way (sample run):
 
 ```bash
-seq 1 ${NUM_CLIENTS} | parallel --jobs ${NUM_CLIENTS} --ungroup python siege.py --id {} --log-every 2 --value 5000
+$ seq 1 ${NUM_CLIENTS} | parallel --jobs ${NUM_CLIENTS} --ungroup python siege.py --id {} --log-every 2 --value 5000
 ```
 
 The script above will run ${NUM_CLIENTS} scripts in parallel that will continuously insert key and
 value pairs in the cache with a value of size 5000 bytes each.
+
+# Erlang bindings
+
+Erlang bindings for the cache are implemented in `resources/memcached.erl`. The following functions
+are exported from the module:
+
+- `start/0`
+- `start/1`
+- `put/3`
+- `del/2`
+- `get/2`
+- `take/2`
+- `stats/1`
+
+`start/0` initiates a TCP connection with the cache using `localhost` as the host and the default
+port (889). `start/1` behaves in the same way except that it receives an address as a parameter.
+Both return `{ok, Connection}` if successful or `{error, Reason}` if unsuccessful. The `Connection`
+should be considered opaque by the client but it's actually the socket used for the client.
+
+The rest of the functions first receive a connection identifier and then the arguments (if any). If
+a connection error happens while handling any of the operation, a pair `{error, Reason}` will be
+returned. If a cache error happens, a pair `{cacheerror, ErrorCode}` will be returned. Otherwise, if
+the interaction with the cache was successful, a pair `{ok, Result}` will be returned when the
+operation includes a content (like `get/2` or `take/2`), or just an `ok` when the successful
+response doesn't include a content.

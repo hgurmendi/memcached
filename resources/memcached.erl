@@ -73,8 +73,9 @@ send_put_request(Socket, Key, Value) ->
 % Receives the response to the PUT request.
 receive_put_response(Socket) ->
     case gen_tcp:recv(Socket, 1) of
-        {ok, <<?BT_OK>>} -> {ok, ok};
-        {ok, <<?BT_EUNK>>} -> {ok, eunk};
+        {ok, <<?BT_OK>>} -> ok;
+        {ok, <<?BT_EUNK>>} -> {cacheerror, eunk};
+        {ok, _} -> {cacheerror, unknown_code};
         Error -> Error
     end.
 
@@ -103,11 +104,11 @@ receive_get_response(Socket) ->
                 Error -> Error
             end;
         {ok, <<?BT_ENOTFOUND>>} ->
-            {ok, enotfound};
+            {cacheerror, enotfound};
         {ok, <<?BT_EUNK>>} ->
-            {ok, eunk};
+            {cacheerror, eunk};
         {ok, _} ->
-            {ok, unexpected_response_code};
+            {cacheerror, unknown_code};
         Error ->
             Error
     end.
@@ -137,11 +138,11 @@ receive_take_response(Socket) ->
                 Error -> Error
             end;
         {ok, <<?BT_ENOTFOUND>>} ->
-            {ok, enotfound};
+            {cacheerror, enotfound};
         {ok, <<?BT_EUNK>>} ->
-            {ok, eunk};
+            {cacheerror, eunk};
         {ok, _} ->
-            {ok, unexpected_response_code};
+            {cacheerror, unknown_code};
         Error ->
             Error
     end.
@@ -166,13 +167,13 @@ send_del_request(Socket, Key) ->
 receive_del_response(Socket) ->
     case gen_tcp:recv(Socket, 1) of
         {ok, <<?BT_OK>>} ->
-            {ok, ok};
+            ok;
         {ok, <<?BT_ENOTFOUND>>} ->
-            {ok, enotfound};
+            {cacheerror, enotfound};
         {ok, <<?BT_EUNK>>} ->
-            {ok, eunk};
+            {cacheerror, eunk};
         {ok, _} ->
-            {ok, unexpected_response_code};
+            {cacheerror, unknown_code};
         Error ->
             Error
     end.
@@ -204,9 +205,9 @@ receive_stats_response(Socket) ->
                     Error
             end;
         {ok, <<?BT_EUNK>>} ->
-            {ok, eunk};
+            {cacheerror, eunk};
         {ok, _} ->
-            {ok, unexpected_response_code};
+            {cacheerror, unknown_code};
         Error ->
             Error
     end.
