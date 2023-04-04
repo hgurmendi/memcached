@@ -1,6 +1,7 @@
 #include <errno.h>     // for errno
 #include <stdio.h>     // for perror
 #include <stdlib.h>    // for malloc
+#include <string.h>    // for memcpy
 #include <sys/types.h> // for ssize_t
 #include <unistd.h>    // for write
 
