@@ -559,8 +559,7 @@ static int evict_lru(struct HashTable *hashtable) {
       // evicted.
       return HT_FOUND;
     }
-    printf("Couldn't acquire bucket node mutex of victim! Trying with the next "
-           "one...\n");
+
     // The bucket node for the current victim usage node is acquired so try with
     // the next least used node in the usage queue.
     victim_usage_node = victim_usage_node->more_used;
@@ -594,15 +593,11 @@ void *hashtable_malloc_evict(struct HashTable *hashtable, size_t size) {
   do {
     ptr = malloc(size);
     if (ptr == NULL) {
-      printf("ATTEMPTING EVICTION! Remaining: %d/%d\n", remaining_evictions,
-             MAX_EVICTIONS_PER_OPERATION);
       rv = evict_lru(hashtable);
       if (rv == HT_NOTFOUND) {
         printf("CRITICAL ERROR (hashtable_malloc_evict): couldn't successfully "
                "evict a hash table entry\n");
         return NULL;
-      } else {
-        printf("EVICTION SUCCESSFUL!\n");
       }
       // Keep trying
       remaining_evictions--;
@@ -612,7 +607,8 @@ void *hashtable_malloc_evict(struct HashTable *hashtable, size_t size) {
     return ptr;
   } while (remaining_evictions > 0);
 
-  printf("Eviction failure!\n");
+  printf("CRITICAL ERROR: Eviction failure! All evictions per operation "
+         "depleted\n");
   return NULL;
 }
 
