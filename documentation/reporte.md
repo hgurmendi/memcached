@@ -57,8 +57,8 @@ tiempo de compilación (configurable a través de un archivo de encabezado, valo
 Al atender las operaciones de la cache es posible que se llegue a ese límite de memoria y los
 pedidos de memoria dinámica pueden fallar, en cuyo caso hay que determinar qué entrada(s) eliminar
 para poder completar la operación. Esa decisión es implementada a través de una política de desalojo
-LRU (Least Recently Used) que utiliza una lista doblemente enlazada que trabaja íntimamente con la
-hash table.
+"best-effort" LRU (Least Recently Used) que utiliza una lista doblemente enlazada que trabaja
+íntimamente con la hash table.
 
 Cada entrada de la hash table contiene una referencia a un nodo de la lista doblemente enlazada
 (bautizada como _cola de uso_) y cada nodo de la cola de uso contiene una referencia a la
@@ -67,27 +67,37 @@ final de la cola de uso son constantes por utilizar una lista doblemente enlazad
 eficiente y fácil determinar qué entrada de la hash table es la menos utilizada, y considerando que
 remover nodos de la cola de uso y colocarlos en el extremo también son operaciones eficientes, el
 costo de actualizar la cola de uso según una consulta a la tabla hash resulta relativamente poco.
-(NOTA: al momento de la redacción de esta parte del informe se me ocurrió que una posible mejora de
-la política de desalojo consiste en guardar en el nodo de la cola de uso una referencia al bucket o
-el índice del bucket de la entrada de la hash table, ya que evitaría tener que realizar el hash de
-la clave para poder determinar esa información, y como la hash table tiene una cantidad fija en
-tiempo de compilación de buckets, podemos elegir guardar el índice en vez de la referencia. Como
-otras propuestas, esto puede ser una posible mejora de rendimiento).
 
-Considerando que la hash table y la cola de uso están íntimamente relacionadas, se decidió proteger
-ambas estructuras de dato con el mismo mutex. Como una posible mejora a esta situación, creo que
-sería posible reemplazar el mutex por un spinlock (ambas abstracciones son ofrecidas por la API de
-POSIX) para ganar un poco más de rendimiento ya que (a mi entender) un mutex pone al hilo llamante a
-dormir cuando está a la espera de tomar un mutex, mientras que un spinlock utiliza busy waiting.
-Suponiendo que el servidor de cache en general posee una carga de lectura / escritura mucho más
-elevada que de procesamiento al estar interactuando con muchos clientes, el costo de hacer busy wait
-resulta mucho menor que el costo de dormir y luego despertar un hilo. A pesar de este rápido
-análisis, se eligió no hacer este cambio y dejarlo como una posible mejora de rendimiento.
+Se implementaron 3 distintos tipos de mutexes para sincronizar el acceso de los hilos a la
+estructura hash table compartida:
+
+- un mutex por bucket de la hash table, cada uno almacenado en el array del miembro
+  `bucket_mutexes` de la hash table.
+- un mutex para el contador de claves de la hash table, almacenado en el miembro `key_count_mutex`
+  de la hash table.
+- un mutex para la cola de uso de la hash table, almacenado en el miembro `usage_mutex` de la hash
+  table.
+
+La mayoría de los comandos de la hash table terminan adquiriendo el mutex correspondiente al bucket
+de la clave contenida en el comando para realizar su operación y también adquieren el mutex de la
+cola de uso para actualizarla (dependiendo del comando de la hash table, esta actualización puede
+ser mover un nodo de uso al extremo de mayor uso, o remover un nodo completamente de la cola de
+uso) y por lo tanto hay que tener especial cuidado cuando se está haciendo el desalojo de una
+entrada de la hash table ya que esa otra operación también toma el mutex de la cola de uso y el
+mutex del bucket donde se aloja la víctima del desalojo. Es por esa razón que al realizar un
+desalojo se le da prioridad en cuanto a la sincronización del acceso a los buckets a las operaciones
+de la hash table y por eso la política de desalojo resulta en "best-effort" Least Recently Used, ya
+que va a haber oportunidades en las que no es posible desalojar la entrada menos utilizada de la
+tabla pero igual se toma una entrada con cualidades muy similares.
+
+Por otro lado, existe un mutex para proteger el acceso al contador compartido `key_count` de la
+hash table, al que acceden todos los hilos de la tabla. Este mutex cubre una región crítica muy
+pequeña a la que acceden todos los hilos que manipulan la hash table. Aquí se podría haber optado
+por guardar un contador por bucket también, pero esto resulta más simple y rápido.
 
 Cuando un pedido de memoria dinámica falla se realizan desalojos hasta que el pedido resulta exitoso
 o se realiza una cantidad máxima de desalojos (configurable a través de un archivo de encabezado,
-valor por defecto: 50) y el pedido es reportado como fallado al cliente. Esto se realiza devolviendo
-un valor `EUNK` tanto en el protocolo binario como en el protocolo de texto.
+valor por defecto: 50) y el pedido es reportado como fallado al cliente. Esto se notifica al cliente devolviendo un valor `EUNK` tanto en el protocolo binario como en el protocolo de texto.
 
 # Bajada de privilegios
 

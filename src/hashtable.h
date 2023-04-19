@@ -26,10 +26,14 @@ struct UsageNode {
 struct HashTable {
   uint64_t num_buckets;
   struct BucketNode **buckets;
-  pthread_mutex_t *mutex;
+  pthread_mutex_t *bucket_mutexes;
+
   uint64_t key_count;
+  pthread_mutex_t *key_count_mutex;
+
   struct UsageNode *most_used;
   struct UsageNode *least_used;
+  pthread_mutex_t *usage_mutex;
 };
 
 // Allocates memory for a hash table (including all its buckets, the mutex and
@@ -94,10 +98,15 @@ void hashtable_destroy(struct HashTable *hashtable);
 // Returns the number of keys stored in the hash table.
 uint64_t hashtable_key_count(struct HashTable *hashtable);
 
-// Calls malloc_evict with the hashtable lock taken.
+// Performs hashtable evictions until the maximum evictions per operation is
+// reached or until the memory is successfully allocated. Returns a pointer to
+// the allocated space if successful or NULL if it wasn't possible to allocate
+// memory.
 void *hashtable_malloc_evict(struct HashTable *hashtable, size_t size);
 
-// Calls malloc_evict_bounded_data with the hashtable lock taken.
+// Tries to allocate memory for a BoundedData struct and a buffer of the given
+// size. If it fails return NULL, otherwise return a pointer to the BoundedData
+// struct. If buffer_size is 0, the bounded data struct will be uninitialized.
 struct BoundedData *
 hashtable_malloc_evict_bounded_data(struct HashTable *hashtable,
                                     size_t buffer_size);
