@@ -237,12 +237,13 @@ int hashtable_insert(struct HashTable *hashtable, struct BoundedData *key,
 
   // Return HT_NOTFOUND to signal that the key wasn't found when inserting.
   hashtable_bucket_release(hashtable, bucket_index);
-  return HT_NOTFOUND;
 
   // Increase the keys counter.
   hashtable_key_count_acquire(hashtable);
   hashtable->key_count++;
   hashtable_key_count_release(hashtable);
+
+  return HT_NOTFOUND;
 }
 
 // Attempts to retrieve a *copy* of the value associated to the given key in the
@@ -411,6 +412,8 @@ void hashtable_print(struct HashTable *hashtable) {
     hashtable_print_bucket_nodes(hashtable, hashtable->buckets[i]);
   }
   printf("=====================\n");
+  printf("=== Key count: %ld\n", hashtable->key_count);
+  printf("=====================\n");
 }
 
 // Prints the usage queue of the given hashtable to standard output.
@@ -556,9 +559,11 @@ static int evict_lru(struct HashTable *hashtable) {
       // evicted.
       return HT_FOUND;
     }
+    printf("Couldn't acquire bucket node mutex of victim! Trying with the next "
+           "one...\n");
     // The bucket node for the current victim usage node is acquired so try with
     // the next least used node in the usage queue.
-    victim_usage_node = victim_usage_node->less_used;
+    victim_usage_node = victim_usage_node->more_used;
 
     // Update the number of eviction attempts.
     remaining_tries--;
@@ -589,11 +594,15 @@ void *hashtable_malloc_evict(struct HashTable *hashtable, size_t size) {
   do {
     ptr = malloc(size);
     if (ptr == NULL) {
+      printf("ATTEMPTING EVICTION! Remaining: %d/%d\n", remaining_evictions,
+             MAX_EVICTIONS_PER_OPERATION);
       rv = evict_lru(hashtable);
       if (rv == HT_NOTFOUND) {
         printf("CRITICAL ERROR (hashtable_malloc_evict): couldn't successfully "
                "evict a hash table entry\n");
         return NULL;
+      } else {
+        printf("EVICTION SUCCESSFUL!\n");
       }
       // Keep trying
       remaining_evictions--;
