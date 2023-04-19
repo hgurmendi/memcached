@@ -26,10 +26,14 @@ struct UsageNode {
 struct HashTable {
   uint64_t num_buckets;
   struct BucketNode **buckets;
-  pthread_mutex_t *mutex;
+  pthread_mutex_t *bucket_mutexes;
+
   uint64_t key_count;
+  pthread_mutex_t *key_count_mutex;
+
   struct UsageNode *most_used;
   struct UsageNode *least_used;
+  pthread_mutex_t *usage_mutex;
 };
 
 // Allocates memory for a hash table (including all its buckets, the mutex and
